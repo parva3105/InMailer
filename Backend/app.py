@@ -42,7 +42,9 @@ def create_template():
             'name': template_name,
             'subject': subject,
             'content': content,
-            'variables': variables
+            'variables': variables,
+            'attachment_path': None,  # Will store path to attachment file
+            'attachment_name': None   # Will store original filename
         }
         
         templates.append(template)
@@ -216,11 +218,13 @@ def send_emails():
                 print(f"📧 Debug: Body length: {len(body)} characters")
                 
                 # Send email using your working email system
+                attachment_path = template.get('attachment_path')
                 send_via_smtp(
                     msg_from=from_address,
                     msg_to=recipient_email,
                     subject=subject,
-                    body=body
+                    body=body,
+                    attachment_path=attachment_path
                 )
                 
                 print(f"✅ Debug: Email sent successfully to {recipient_email}")
@@ -335,6 +339,56 @@ def test_template():
     except Exception as e:
         return jsonify({'error': f'Template test failed: {str(e)}'}), 500
 
+@app.route('/api/template-attachment', methods=['POST'])
+def upload_template_attachment():
+    """Upload attachment for a template"""
+    try:
+        template_id = request.form.get('template_id')
+        attachment_file = request.files.get('attachment')
+        
+        if not template_id or not attachment_file:
+            return jsonify({'error': 'Missing template ID or attachment file'}), 400
+        
+        # Find template
+        template = next((t for t in templates if t['id'] == template_id), None)
+        if not template:
+            return jsonify({'error': 'Template not found'}), 404
+        
+        # Create attachments directory if it doesn't exist
+        attachments_dir = Path("Templates/attachments")
+        attachments_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save attachment file with original filename
+        # Check if file already exists and add a number suffix if needed
+        original_filename = attachment_file.filename
+        base_name = Path(original_filename).stem
+        extension = Path(original_filename).suffix
+        
+        counter = 1
+        attachment_filename = original_filename
+        attachment_path = attachments_dir / attachment_filename
+        
+        # If file exists, add a number suffix
+        while attachment_path.exists():
+            attachment_filename = f"{base_name}_{counter}{extension}"
+            attachment_path = attachments_dir / attachment_filename
+            counter += 1
+        
+        attachment_file.save(attachment_path)
+        
+        # Update template with attachment info
+        template['attachment_path'] = str(attachment_path)
+        template['attachment_name'] = attachment_file.filename
+        
+        return jsonify({
+            'message': 'Attachment uploaded successfully',
+            'attachment_name': attachment_file.filename,
+            'template': template
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to upload attachment: {str(e)}'}), 500
+
 @app.route('/api/csv-columns', methods=['POST'])
 def get_csv_columns():
     """Get available columns from uploaded CSV for template creation"""
@@ -383,7 +437,9 @@ if __name__ == '__main__':
                             'name': template_file.stem.replace('_', ' '),
                             'subject': subject,
                             'content': body,
-                            'variables': ['Name', 'Company']  # Default variables
+                            'variables': ['Name', 'Company'],  # Default variables
+                            'attachment_path': None,
+                            'attachment_name': None
                         }
                         templates.append(template)
             except Exception as e:

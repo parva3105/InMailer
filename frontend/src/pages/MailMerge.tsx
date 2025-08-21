@@ -10,6 +10,8 @@ interface Template {
   subject: string;
   content: string;
   variables: string[];
+  attachment_path?: string;
+  attachment_name?: string;
 }
 
 interface Contact {
@@ -236,7 +238,15 @@ const MailMerge: React.FC = () => {
 
             {/* Template Selection */}
             <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">2. Select Template</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-900">2. Select Template</h2>
+                <button
+                  onClick={() => navigate('/templates')}
+                  className="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  + New Template
+                </button>
+              </div>
               
               {isLoadingTemplates ? (
                 <div className="text-center py-8">
@@ -274,6 +284,11 @@ const MailMerge: React.FC = () => {
                           <p className="text-xs text-gray-500 mt-1">
                             Variables: {template.variables.join(', ')}
                           </p>
+                          {template.attachment_name && (
+                            <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                              📎 {template.attachment_name}
+                            </p>
+                          )}
                         </div>
                         <FileText className="w-5 h-5 text-gray-400" />
                       </div>
@@ -353,6 +368,15 @@ const MailMerge: React.FC = () => {
                         <div>
                           <p className="text-xs text-gray-500 uppercase tracking-wide">Content:</p>
                           <p className="text-sm whitespace-pre-line">{result.rendered_body}</p>
+                        </div>
+                      )}
+                      
+                      {selectedTemplate?.attachment_name && (
+                        <div className="mt-2 pt-2 border-t border-gray-100">
+                          <p className="text-xs text-gray-500 uppercase tracking-wide">Attachment:</p>
+                          <p className="text-sm text-green-600 flex items-center gap-1">
+                            📎 {selectedTemplate.attachment_name}
+                          </p>
                         </div>
                       )}
                     </div>

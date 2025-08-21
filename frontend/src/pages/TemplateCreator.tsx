@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Plus, X } from 'lucide-react';
+import { ArrowLeft, Save, Plus, X, Upload, FileText, Trash2 } from 'lucide-react';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -11,6 +11,8 @@ const TemplateCreator: React.FC = () => {
   const [variables, setVariables] = useState(['First_Name', 'Company']);
   const [newVariable, setNewVariable] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedAttachment, setSelectedAttachment] = useState<File | null>(null);
+  const [attachmentName, setAttachmentName] = useState<string>('');
   const navigate = useNavigate();
 
   const addVariable = () => {
@@ -22,6 +24,26 @@ const TemplateCreator: React.FC = () => {
 
   const removeVariable = (index: number) => {
     setVariables(variables.filter((_, i) => i !== index));
+  };
+
+  const handleAttachmentUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Check file size (limit to 10MB)
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      if (file.size > maxSize) {
+        alert('File size too large. Please select a file smaller than 10MB.');
+        return;
+      }
+      
+      setSelectedAttachment(file);
+      setAttachmentName(file.name);
+    }
+  };
+
+  const removeAttachment = () => {
+    setSelectedAttachment(null);
+    setAttachmentName('');
   };
 
   const insertVariable = (variable: string) => {
@@ -49,6 +71,7 @@ const TemplateCreator: React.FC = () => {
     setIsSaving(true);
     
     try {
+      // First, create the template
       const response = await fetch(`${API_BASE_URL}/templates`, {
         method: 'POST',
         headers: {
@@ -64,7 +87,28 @@ const TemplateCreator: React.FC = () => {
 
       if (response.ok) {
         const result = await response.json();
-        alert('Template saved successfully!');
+        const template = result.template;
+        
+        // If there's an attachment, upload it
+        if (selectedAttachment && template) {
+          const formData = new FormData();
+          formData.append('template_id', template.id);
+          formData.append('attachment', selectedAttachment);
+          
+          const attachmentResponse = await fetch(`${API_BASE_URL}/template-attachment`, {
+            method: 'POST',
+            body: formData,
+          });
+          
+          if (attachmentResponse.ok) {
+            alert('Template with attachment saved successfully!');
+          } else {
+            alert('Template saved but attachment upload failed. You can add the attachment later.');
+          }
+        } else {
+          alert('Template saved successfully!');
+        }
+        
         navigate('/');
       } else {
         const error = await response.json();
@@ -173,13 +217,13 @@ const TemplateCreator: React.FC = () => {
               </p>
               <div className="flex flex-wrap gap-2">
                 {variables.map((variable) => (
-                                          <button
-                          key={variable}
-                          onClick={() => insertVariable(variable)}
-                          className="px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm"
-                        >
-                          {`\${${variable}}`}
-                        </button>
+                  <button
+                    key={variable}
+                    onClick={() => insertVariable(variable)}
+                    className="px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm"
+                  >
+                    {`\${${variable}}`}
+                  </button>
                 ))}
               </div>
             </div>
@@ -191,6 +235,63 @@ const TemplateCreator: React.FC = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
               placeholder="Write your email content here. Use $VariableName to insert dynamic content."
             />
+          </div>
+
+          {/* Attachment Section */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Attachment (Optional)
+            </label>
+            <p className="text-sm text-gray-600 mb-3">
+              Add a resume, portfolio, or any document that will be automatically attached to emails sent with this template.
+            </p>
+            
+            {!selectedAttachment ? (
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
+                  onChange={handleAttachmentUpload}
+                  className="hidden"
+                  id="attachment-upload"
+                />
+                <label htmlFor="attachment-upload" className="cursor-pointer">
+                  <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600 mb-2">
+                    <span className="font-medium text-blue-600">Click to upload</span> or drag and drop
+                  </p>
+                  <p className="text-sm text-gray-500">PDF, DOC, DOCX, TXT, Images supported</p>
+                </label>
+              </div>
+            ) : (
+              <div className="border border-green-200 rounded-lg p-4 bg-green-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <FileText className="w-8 h-8 text-green-600" />
+                    <div>
+                      <p className="text-green-800 font-medium">{attachmentName}</p>
+                      <p className="text-green-700 text-sm">
+                        {(selectedAttachment.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={removeAttachment}
+                    className="p-2 text-green-600 hover:text-green-800 hover:bg-green-100 rounded-lg transition-colors"
+                    title="Remove attachment"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            <p className="text-xs text-gray-500 mt-2">
+              💡 Tip: This attachment will be automatically included with every email sent using this template.
+            </p>
+            <p className="text-xs text-gray-500">
+              📎 Supported formats: PDF, DOC, DOCX, TXT, JPG, JPEG, PNG (Max size: 10MB)
+            </p>
           </div>
 
           {/* Save Button */}
