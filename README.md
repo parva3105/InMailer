@@ -1,4 +1,4 @@
-# Mail Merge Kit (CSV → Personalized Emails)
+# InMailer (CSV → Personalized Emails)
 
 A professional email automation tool that sends personalized emails with automatic resume attachments, HTML formatting, and professional styling.
 
@@ -17,7 +17,10 @@ A professional email automation tool that sends personalized emails with automat
 - `mail_merge.py` - Main script with all features
 - `sample_contacts.csv` - Example CSV with contact data
 - `requirements.txt` - Python dependencies
-- `results.csv` - Email sending logs (auto-generated)
+- `Templates/` - Folder for email templates
+- `Resume/` - Folder for resume attachments
+- `logs/email_log.csv` - Email sending logs (auto-generated)
+- `logs/sent_emails.json` - Email tracking database (auto-generated)
 
 **Note**: Email templates are not included in this repository for privacy reasons. See the "Creating Your Own Template" section below.
 
@@ -43,8 +46,8 @@ export SENDGRID_API_KEY="your-sendgrid-api-key"
 ### 2. Prepare Your Files
 
 - **CSV**: Update `sample_contacts.csv` with your contacts
-- **Resume**: Place your resume PDF in the same folder (auto-detected)
-- **Template**: Create your own email template (see template creation guide below)
+- **Resume**: Place your resume PDF in the Resume/ folder (auto-detected)
+- **Template**: Create your own email template in the Templates/ folder (see template creation guide below)
 
 ### 3. Test First (Dry Run)
 
@@ -168,20 +171,24 @@ Optional:
   --dry-run               Test mode (no emails sent)
   --limit N               Max emails to process (0 = all)
   --rate SECONDS          Delay between sends (default: 2.0)
-  --log PATH              Log file path (default: results.csv)
+  --log PATH              Log file path (default: logs/email_log.csv)
   --attachment PATH       Manual attachment path (optional)
 ```
 
 ## 📎 Resume Attachment
 
 ### Auto-Detection
-The script automatically finds your resume in the template directory:
+The script automatically finds your resume in the Resume/ folder (preferred) or template directory:
 
 **Supported Filenames**:
 - `resume.pdf`, `Resume.pdf`
 - `cv.pdf`, `CV.pdf`
 - Word documents: `.docx`, `.doc`
 - Custom names: `your_name_resume.pdf`
+
+**Priority Order**:
+1. **Resume/ folder** (recommended location)
+2. Template directory (fallback)
 
 ### Manual Override
 If you want to use a different file:
@@ -235,8 +242,8 @@ python mail_merge.py --mode sendgrid [other-options]
 
 ## 📊 Logging & Monitoring
 
-### Results File
-`results.csv` tracks:
+### Email Log File
+`logs/email_log.csv` tracks:
 - `email` - Recipient address
 - `status` - sent, failed, dry_run, skipped
 - `error` - Error message (if any)
@@ -267,7 +274,7 @@ python mail_merge.py --csv contacts.csv --template template.txt --from "test@ema
 
 ### Common Issues
 1. **Placeholders not replaced**: Check CSV column names match template variables
-2. **Resume not attached**: Ensure resume file is in template directory
+2. **Resume not attached**: Ensure resume file is in Resume/ folder or template directory
 3. **Authentication failed**: Verify Gmail App Password or SendGrid API key
 4. **HTML not rendering**: Ensure template has proper HTML structure
 
@@ -333,7 +340,7 @@ python mail_merge.py --csv your_contacts.csv --template your_template.txt --from
 ## 📞 Support
 
 For issues or questions:
-1. Check the logs in `results.csv`
+1. Check the logs in `logs/email_log.csv`
 2. Run with `--dry-run` to test template rendering
 3. Verify environment variables are set correctly
 4. Ensure all required files are in the correct locations

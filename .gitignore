@@ -6,6 +6,8 @@
 
 # Resume and document files
 *.pdf
+# Resume/ folder - Keep this folder structure but ignore PDF contents
+Resume/*.pdf
 
 # Template files
 *.txt
@@ -31,5 +33,5 @@ ENV/
 Thumbs.db
 
 # Log files
-*.log
-results.csv
+# *.log - No longer generated, using logs/ directory instead
+# results.csv - No longer generated, replaced by logs/email_log.csv
