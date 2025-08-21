@@ -1,363 +1,257 @@
-# InMailer (CSV → Personalized Emails)
+# InMailer - Complete Email Automation Solution
 
-A professional email automation tool that sends personalized emails with automatic resume attachments, HTML formatting, and professional styling.
+A professional email automation tool with a modern React frontend and powerful Python backend, designed for personalized email campaigns, job applications, and business outreach.
 
-## ✨ Features
+## 🏗️ **Project Structure**
 
-- **📧 Personalized Emails**: Dynamic content substitution from CSV data
-- **📎 Auto-Resume Attachment**: Automatically detects and attaches your resume
-- **🎨 HTML Email Support**: Professional formatting with custom fonts and styling
-- **🔗 LinkedIn Integration**: Clickable hyperlinks in your signature
-- **⚡ Multiple Email Providers**: SMTP (Gmail) and SendGrid support
-- **📊 Detailed Logging**: Track sent, failed, and skipped emails
-- **🚀 Rate Limiting**: Prevent email provider throttling
+```
+mail_merge_kit/
+├── Backend/                 # Python backend with all original functionality
+│   ├── *.py                # Python modules (mail_merge.py, contact_processor.py, etc.)
+│   ├── data/               # Contact CSV files
+│   ├── Templates/          # Email templates
+│   ├── Resume/             # Resume attachments
+│   ├── logs/               # Email logs and tracking
+│   ├── duplicates/         # Duplicate contact exports
+│   └── requirements.txt    # Python dependencies
+├── frontend/               # React + TypeScript frontend
+│   ├── src/
+│   │   ├── components/     # Reusable UI components
+│   │   ├── pages/          # Page components
+│   │   └── App.tsx         # Main application
+│   ├── tailwind.config.js  # Tailwind CSS configuration
+│   └── package.json        # Node.js dependencies
+└── README.md               # This file
+```
 
-## 📁 Files
+## ✨ **Features**
 
-- `mail_merge.py` - Main script with all features
-- `sample_contacts.csv` - Example CSV with contact data
-- `requirements.txt` - Python dependencies
-- `Templates/` - Folder for email templates
-- `Resume/` - Folder for resume attachments
-- `logs/email_log.csv` - Email sending logs (auto-generated)
-- `logs/sent_emails.json` - Email tracking database (auto-generated)
+### 🎯 **Core Email Automation**
+- **Personalized Emails**: Dynamic content substitution from CSV data
+- **Auto-Resume Attachment**: Automatically detects and attaches resumes
+- **HTML Email Support**: Professional formatting with custom styling
+- **Multiple Providers**: SMTP (Gmail) and SendGrid support
+- **Rate Limiting**: Prevent email provider throttling
+- **Duplicate Prevention**: Smart detection and management
 
-**Note**: Email templates are not included in this repository for privacy reasons. See the "Creating Your Own Template" section below.
+### 🖥️ **Modern Web Interface**
+- **Beautiful Dashboard**: Real-time statistics and quick actions
+- **Campaign Builder**: Step-by-step wizard for creating campaigns
+- **Template Management**: Visual editor with preview functionality
+- **Contact Management**: Import, organize, and manage contact lists
+- **Settings Panel**: Comprehensive configuration and user preferences
+- **Responsive Design**: Works perfectly on all devices
 
-## 🚀 Quick Start
+### 🔧 **Advanced Backend**
+- **Modular Architecture**: Clean, maintainable Python code
+- **Comprehensive Logging**: Track all email operations
+- **Data Validation**: Robust CSV and template validation
+- **Error Handling**: Graceful error handling and reporting
+- **Performance Optimization**: Efficient processing and memory management
 
-### 1. Setup Environment Variables
+## 🚀 **Quick Start**
 
-Create a `.env` file or export these variables:
+### **Option 1: Web Interface (Recommended)**
 
+1. **Start the Frontend**
+   ```bash
+   cd frontend
+   npm install
+   npm start
+   ```
+   Open `http://localhost:3000` in your browser
+
+2. **Configure Backend**
+   ```bash
+   cd Backend
+   pip install -r requirements.txt
+   # Set up environment variables (see Backend/README.md)
+   ```
+
+3. **Use the Web Interface**
+   - Create campaigns through the intuitive wizard
+   - Manage templates with the visual editor
+   - Upload contacts and monitor campaigns
+   - Configure email settings
+
+### **Option 2: Command Line (Original)**
+
+1. **Navigate to Backend**
+   ```bash
+   cd Backend
+   ```
+
+2. **Set up environment variables**
+   ```bash
+   export EMAIL_USER="yourgmail@gmail.com"
+   export EMAIL_PASSWORD="your-app-password"
+   ```
+
+3. **Run campaigns**
+   ```bash
+   python mail_merge.py --csv data/contacts.csv --template Templates/template.txt --from "Your Name <your@email.com>"
+   ```
+
+## 🛠️ **Technology Stack**
+
+### **Frontend**
+- **React 18** with TypeScript for type safety
+- **Tailwind CSS** for beautiful, responsive design
+- **React Router** for navigation and routing
+- **Lucide React** for consistent, beautiful icons
+- **Axios** for HTTP communication
+
+### **Backend**
+- **Python 3.8+** for robust email processing
+- **SMTP/SendGrid** for email delivery
+- **CSV Processing** for contact management
+- **HTML Templating** for dynamic content
+- **Logging & Tracking** for campaign monitoring
+
+## 📱 **User Experience**
+
+### **Dashboard**
+- **Real-time Statistics**: Campaign counts, success rates, and performance metrics
+- **Quick Actions**: One-click access to common tasks
+- **Recent Activity**: Monitor ongoing campaigns and system status
+- **Visual Feedback**: Beautiful charts and progress indicators
+
+### **Campaign Creation**
+- **Step-by-Step Wizard**: Guided campaign creation process
+- **Template Selection**: Choose from pre-built or custom templates
+- **Contact Management**: Easy CSV upload and validation
+- **Preview & Testing**: See exactly how emails will look
+- **Dry Run Mode**: Test without sending actual emails
+
+### **Template Management**
+- **Visual Editor**: Create templates with HTML support
+- **Variable System**: Use placeholders like `${First_Name}`, `${Company}`
+- **Category Organization**: Organize templates by purpose
+- **Preview Mode**: See templates with sample data
+- **Import/Export**: Share templates across projects
+
+### **Contact Management**
+- **Bulk Import**: Upload large contact lists via CSV
+- **Smart Validation**: Automatic email format checking
+- **Deduplication**: Prevent duplicate contacts
+- **Advanced Filtering**: Search and organize contacts
+- **Status Tracking**: Monitor engagement and email status
+
+## 🔧 **Configuration**
+
+### **Email Setup**
+- **Gmail**: Use App Passwords for enhanced security
+- **Outlook**: Configure SMTP settings
+- **SendGrid**: API key-based authentication
+- **Custom SMTP**: Any SMTP server support
+
+### **Security Features**
+- **Environment Variables**: Secure credential management
+- **SSL/TLS Support**: Encrypted email transmission
+- **Input Validation**: Prevent injection attacks
+- **Rate Limiting**: Protect against abuse
+
+## 📊 **Monitoring & Analytics**
+
+### **Campaign Tracking**
+- **Real-time Progress**: Monitor email sending progress
+- **Success Rates**: Track delivery and open rates
+- **Error Reporting**: Detailed error logs and troubleshooting
+- **Performance Metrics**: Campaign effectiveness analysis
+
+### **System Health**
+- **Service Status**: Monitor email provider connectivity
+- **Resource Usage**: Track system performance
+- **Error Logs**: Comprehensive error tracking
+- **Audit Trail**: Complete operation history
+
+## 🌟 **Use Cases**
+
+### **Job Applications**
+- **Personalized Outreach**: Target specific companies and roles
+- **Resume Attachments**: Automatic resume inclusion
+- **Follow-up Campaigns**: Track and manage responses
+- **Professional Templates**: Industry-specific email formats
+
+### **Business Development**
+- **Lead Generation**: Reach potential clients and partners
+- **Product Launches**: Announce new products and features
+- **Customer Outreach**: Engage existing customers
+- **Networking**: Connect with industry professionals
+
+### **Marketing Campaigns**
+- **Newsletter Distribution**: Regular content delivery
+- **Event Promotion**: Conference and webinar announcements
+- **Product Updates**: Feature releases and improvements
+- **Customer Feedback**: Survey and feedback collection
+
+## 🚀 **Deployment**
+
+### **Frontend Deployment**
 ```bash
-# For Gmail SMTP
-export EMAIL_USER="yourgmail@gmail.com"
-export EMAIL_PASSWORD="your-app-password"
-export EMAIL_HOST="smtp.gmail.com"
-export EMAIL_PORT="587"
-
-# For SendGrid (optional)
-export SENDGRID_API_KEY="your-sendgrid-api-key"
+cd frontend
+npm run build
+# Deploy build/ folder to your hosting provider
 ```
 
-**Note**: For Gmail, use an App Password, not your regular password.
-
-### 2. Prepare Your Files
-
-- **CSV**: Update `sample_contacts.csv` with your contacts
-- **Resume**: Place your resume PDF in the Resume/ folder (auto-detected)
-- **Template**: Create your own email template in the Templates/ folder (see template creation guide below)
-
-### 3. Test First (Dry Run)
-
+### **Backend Deployment**
 ```bash
-python mail_merge.py --csv sample_contacts.csv --template your_template.txt --from "Your Name <yourgmail@gmail.com>" --mode smtp --dry-run
+cd Backend
+# Deploy to your preferred Python hosting service
+# Set environment variables for production
 ```
 
-### 4. Send Real Emails
+### **Docker Support**
+Both frontend and backend include Docker configurations for easy containerization.
 
-```bash
-python mail_merge.py --csv sample_contacts.csv --template your_template.txt --from "Your Name <yourgmail@gmail.com>" --mode smtp
-```
+## 🔒 **Best Practices**
 
-## 📝 Creating Your Own Template
-
-### Template File Structure
-
-Create a new text file (e.g., `my_template.txt`) with this structure:
-
-```
-Subject: Your Subject Line Here
-
-<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 14px; line-height: 1.6; color: #333333; max-width: 600px; margin: 0 auto;">
-
-<p style="margin-bottom: 16px;">Hello ${First_Name},</p>
-
-<p style="margin-bottom: 16px;">Your email content here...</p>
-
-<p style="margin-bottom: 16px;">More content with ${Company} placeholder...</p>
-
-<p style="margin-top: 24px; margin-bottom: 8px;">Regards,</p>
-<p style="margin-bottom: 4px;"><strong>Your Name</strong></p>
-<p style="margin-bottom: 4px;">Your Title</p>
-<p style="margin-bottom: 4px;">Your Company</p>
-<p style="margin-top: 16px; color: #666666; font-size: 13px;">your.email@domain.com | <a href="https://linkedin.com/in/yourprofile" style="color: #0077b5; text-decoration: none;">LinkedIn</a> | Your Phone</p>
-
-</div>
-```
-
-### Template Requirements
-
-1. **First Line**: Must start with `Subject: ` followed by your subject template
-2. **HTML Structure**: Use proper HTML tags for formatting
-3. **Placeholders**: Use `${Column_Name}` syntax for dynamic content
-4. **Styling**: Include CSS styles for professional appearance
-
-### Template Examples
-
-#### Job Application Template
-```
-Subject: Hi ${First_Name} – Application for ${Position} Role
-
-<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 14px; line-height: 1.6; color: #333333; max-width: 600px; margin: 0 auto;">
-
-<p style="margin-bottom: 16px;">Hello ${First_Name},</p>
-
-<p style="margin-bottom: 16px;">My name is [Your Name], and I'm reaching out about the ${Position} role at ${Company}.</p>
-
-<p style="margin-bottom: 16px;">[Your background and experience...]</p>
-
-<p style="margin-bottom: 16px;">I've attached my resume for your reference. Would you be available for a brief conversation?</p>
-
-<p style="margin-top: 24px; margin-bottom: 8px;">Best regards,</p>
-<p style="margin-bottom: 4px;"><strong>[Your Name]</strong></p>
-<p style="margin-bottom: 4px;">[Your Title]</p>
-<p style="margin-top: 16px; color: #666666; font-size: 13px;">[Your Contact Info]</p>
-
-</div>
-```
-
-#### Networking Template
-```
-Subject: Hi ${First_Name} – Coffee Chat Request
-
-<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 14px; line-height: 1.6; color: #333333; max-width: 600px; margin: 0 auto;">
-
-<p style="margin-bottom: 16px;">Hi ${First_Name},</p>
-
-<p style="margin-bottom: 16px;">I came across your work at ${Company} and was impressed by [specific project/achievement].</p>
-
-<p style="margin-bottom: 16px;">[Your introduction and why you want to connect...]</p>
-
-<p style="margin-bottom: 16px;">Would you be open to a 15-minute coffee chat to discuss [topic]?</p>
-
-<p style="margin-top: 24px; margin-bottom: 8px;">Thanks,</p>
-<p style="margin-bottom: 4px;"><strong>[Your Name]</strong></p>
-<p style="margin-top: 16px; color: #666666; font-size: 13px;">[Your Contact Info]</p>
-
-</div>
-```
-
-## 📊 CSV Format
-
-Your CSV must have these columns:
-
-```csv
-Email,First Name,Company
-john@company.com,John,Acme Corp
-jane@startup.com,Jane,Startup Inc
-```
-
-**Column Names**:
-- `Email` - Recipient's email address
-- `First Name` - Recipient's first name
-- `Company` - Company name
-
-**Custom Columns**: You can add more columns like `Position`, `Department`, etc., and use them in your template as `${Position}`, `${Department}`.
-
-## 🔧 Command Line Options
-
-```bash
-python mail_merge.py [OPTIONS]
-
-Required:
-  --csv PATH          Path to contacts CSV file
-  --template PATH     Path to your email template file
-  --from EMAIL        From email address
-
-Optional:
-  --mode {smtp,sendgrid}  Email provider (default: smtp)
-  --dry-run               Test mode (no emails sent)
-  --limit N               Max emails to process (0 = all)
-  --rate SECONDS          Delay between sends (default: 2.0)
-  --log PATH              Log file path (default: logs/email_log.csv)
-  --attachment PATH       Manual attachment path (optional)
-```
-
-## 📎 Resume Attachment
-
-### Auto-Detection
-The script automatically finds your resume in the Resume/ folder (preferred) or template directory:
-
-**Supported Filenames**:
-- `resume.pdf`, `Resume.pdf`
-- `cv.pdf`, `CV.pdf`
-- Word documents: `.docx`, `.doc`
-- Custom names: `your_name_resume.pdf`
-
-**Priority Order**:
-1. **Resume/ folder** (recommended location)
-2. Template directory (fallback)
-
-### Manual Override
-If you want to use a different file:
-
-```bash
-python mail_merge.py --csv contacts.csv --template template.txt --from "you@email.com" --attachment "path/to/resume.pdf"
-```
-
-## 🎨 HTML Email Features
-
-### Font Customization
-Change fonts by modifying the template:
-
-```html
-<div style="font-family: 'Arial', sans-serif; font-size: 14px;">
-  <!-- Your content -->
-</div>
-```
-
-### Professional Styling
-The template includes:
-- **Fonts**: Segoe UI, Tahoma, Geneva, Verdana
-- **Colors**: Dark gray text (#333333), blue links (#0077b5)
-- **Layout**: 600px max-width, centered content
-- **Spacing**: Consistent margins and line heights
-
-### CSS Properties You Can Use
-- `font-family` - Font selection
-- `font-size` - Text size
-- `color` - Text color
-- `margin` - Spacing around elements
-- `padding` - Internal spacing
-- `text-align` - Text alignment
-- `background-color` - Background colors
-
-## 📈 Email Providers
-
-### Gmail SMTP (Recommended)
-```bash
-export EMAIL_USER="yourgmail@gmail.com"
-export EMAIL_PASSWORD="your-app-password"
-python mail_merge.py --mode smtp [other-options]
-```
-
-### SendGrid
-```bash
-pip install -r requirements.txt
-export SENDGRID_API_KEY="your-api-key"
-python mail_merge.py --mode sendgrid [other-options]
-```
-
-## 📊 Logging & Monitoring
-
-### Email Log File
-`logs/email_log.csv` tracks:
-- `email` - Recipient address
-- `status` - sent, failed, dry_run, skipped
-- `error` - Error message (if any)
-- `subject` - Email subject line
-
-### Rate Limiting
-- **Default**: 2 seconds between emails
-- **Custom**: Use `--rate 5` for 5-second delays
-- **Purpose**: Prevent email provider throttling
-
-## 🧪 Testing & Debugging
-
-### Dry Run Mode
-```bash
-python mail_merge.py --csv contacts.csv --template template.txt --from "test@email.com" --dry-run
-```
-
-**What it shows**:
-- Template rendering with real data
-- Email content preview
-- No actual emails sent
-
-### Template Testing Tips
-1. **Test with small CSV**: Use 2-3 contacts first
-2. **Check placeholders**: Ensure `${Column_Name}` matches CSV headers
-3. **Validate HTML**: Use online HTML validators
-4. **Preview emails**: Check how they look in different email clients
-
-### Common Issues
-1. **Placeholders not replaced**: Check CSV column names match template variables
-2. **Resume not attached**: Ensure resume file is in Resume/ folder or template directory
-3. **Authentication failed**: Verify Gmail App Password or SendGrid API key
-4. **HTML not rendering**: Ensure template has proper HTML structure
-
-## 📋 Example Usage
-
-### Job Application Campaign
-```bash
-# Test first
-python mail_merge.py --csv job_contacts.csv --template job_template.txt --from "Your Name <your@email.com>" --dry-run
-
-# Send real emails
-python mail_merge.py --csv job_contacts.csv --template job_template.txt --from "Your Name <your@email.com>" --mode smtp --rate 3
-```
-
-### Networking Outreach
-```bash
-python mail_merge.py --csv networking.csv --template networking.txt --from "Your Name <your@email.com>" --mode smtp
-```
-
-### Custom Campaign
-```bash
-# Create your own template first, then:
-python mail_merge.py --csv your_contacts.csv --template your_template.txt --from "Your Name <your@email.com>" --mode smtp --dry-run
-```
-
-## 🔒 Best Practices
-
-### Email Compliance
-- ✅ Include unsubscribe option for marketing emails
-- ✅ Use real business address
+### **Email Compliance**
+- ✅ Include unsubscribe options
+- ✅ Use real business addresses
 - ✅ Respect recipient preferences
 - ✅ Follow local email laws
 
-### Professional Etiquette
-- ✅ Personalize each email
-- ✅ Keep content relevant and concise
-- ✅ Include clear call-to-action
-- ✅ Professional signature with contact info
+### **Data Management**
+- ✅ Regular backups of contact lists
+- ✅ Secure storage of credentials
+- ✅ Regular cleanup of old data
+- ✅ Monitor system performance
+
+### **Campaign Optimization**
 - ✅ Test templates before sending
+- ✅ Use appropriate rate limits
+- ✅ Monitor delivery rates
+- ✅ A/B test subject lines
 
-### Template Design
-- ✅ Keep it under 600px width for mobile compatibility
-- ✅ Use consistent spacing and margins
-- ✅ Include your contact information
-- ✅ Make it easy to read on all devices
-- ✅ Test with different email clients
+## 🆘 **Support & Documentation**
 
-## 🆘 Troubleshooting
+- **Frontend Docs**: See `frontend/README.md` for detailed frontend documentation
+- **Backend Docs**: See `Backend/README.md` for backend usage and API details
+- **Issues**: Report bugs and request features through GitHub issues
+- **Contributing**: See CONTRIBUTING.md for development guidelines
 
-### Gmail Issues
-- **"Username and Password not accepted"**: Use App Password, not regular password
-- **"Less secure app access"**: Enable 2FA and create App Password
+## 🤝 **Contributing**
 
-### Template Issues
-- **HTML not rendering**: Ensure template has proper HTML structure
-- **Placeholders not working**: Check CSV column names match template variables
-- **Formatting lost**: Verify CSS styles are inline (not external)
+We welcome contributions! Please see our contributing guidelines for:
+- Code style and standards
+- Testing requirements
+- Pull request process
+- Development setup
 
-### Attachment Issues
-- **Resume not found**: Verify filename matches supported patterns
-- **File too large**: Keep attachments under 25MB for most providers
+## 📄 **License**
 
-## 📞 Support
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-For issues or questions:
-1. Check the logs in `logs/email_log.csv`
-2. Run with `--dry-run` to test template rendering
-3. Verify environment variables are set correctly
-4. Ensure all required files are in the correct locations
-5. Test your template with a small CSV first
+## 🙏 **Acknowledgments**
 
-## 🎯 Getting Started Checklist
-
-- [ ] Set up environment variables
-- [ ] Create your email template
-- [ ] Prepare your CSV with contacts
-- [ ] Place your resume in the folder
-- [ ] Test with `--dry-run` flag
-- [ ] Send a test email to yourself
-- [ ] Run your campaign
+- **React Team** for the amazing frontend framework
+- **Tailwind CSS** for the beautiful styling system
+- **Python Community** for robust backend tools
+- **Email Service Providers** for reliable delivery infrastructure
 
 ---
 
-**Happy Email Marketing! 🚀**
+**Transform your email outreach with InMailer! 🚀**
 
-*Remember: Create your own templates to match your personal brand and messaging style.*
+*Professional email automation with a beautiful, modern interface*
