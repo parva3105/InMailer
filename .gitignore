@@ -35,3 +35,5 @@ Thumbs.db
 # Log files
 # *.log - No longer generated, using logs/ directory instead
 # results.csv - No longer generated, replaced by logs/email_log.csv
+
+test_db.py

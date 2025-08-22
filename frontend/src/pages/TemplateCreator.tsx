@@ -94,19 +94,38 @@ const TemplateCreator: React.FC = () => {
       
       if (editMode) {
         // Update existing template
-        const response = await fetch(`${API_BASE_URL}/templates/${editingTemplateId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include', // Include session cookies
-          body: JSON.stringify({
-            name: templateName,
-            subject: subject,
-            content: content,
-            variables: variables
-          }),
-        });
+        let response;
+        
+        // If there's a new attachment, send as multipart form data
+        if (selectedAttachment) {
+          const formData = new FormData();
+          formData.append('name', templateName);
+          formData.append('subject', subject);
+          formData.append('content', content);
+          formData.append('variables', JSON.stringify(variables));
+          formData.append('file', selectedAttachment);
+          
+          response = await fetch(`${API_BASE_URL}/templates/${editingTemplateId}`, {
+            method: 'PUT',
+            credentials: 'include', // Include session cookies
+            body: formData,
+          });
+        } else {
+          // No new attachment, send as JSON
+          response = await fetch(`${API_BASE_URL}/templates/${editingTemplateId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include', // Include session cookies
+            body: JSON.stringify({
+              name: templateName,
+              subject: subject,
+              content: content,
+              variables: variables
+            }),
+          });
+        }
 
         if (response.ok) {
           const result = await response.json();
@@ -118,19 +137,38 @@ const TemplateCreator: React.FC = () => {
         }
       } else {
         // Create new template
-        const response = await fetch(`${API_BASE_URL}/templates`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include', // Include session cookies
-          body: JSON.stringify({
-            name: templateName,
-            subject: subject,
-            content: content,
-            variables: variables
-          }),
-        });
+        let response;
+        
+        // If there's an attachment, send as multipart form data
+        if (selectedAttachment) {
+          const formData = new FormData();
+          formData.append('name', templateName);
+          formData.append('subject', subject);
+          formData.append('content', content);
+          formData.append('variables', JSON.stringify(variables));
+          formData.append('file', selectedAttachment);
+          
+          response = await fetch(`${API_BASE_URL}/templates`, {
+            method: 'POST',
+            credentials: 'include', // Include session cookies
+            body: formData,
+          });
+        } else {
+          // No attachment, send as JSON
+          response = await fetch(`${API_BASE_URL}/templates`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include', // Include session cookies
+            body: JSON.stringify({
+              name: templateName,
+              subject: subject,
+              content: content,
+              variables: variables
+            }),
+          });
+        }
 
         if (response.ok) {
           const result = await response.json();
@@ -142,54 +180,9 @@ const TemplateCreator: React.FC = () => {
         }
       }
       
-      // If there's a new attachment, upload it
-      if (selectedAttachment && template) {
-        console.log('🔍 Uploading new attachment:', selectedAttachment.name, selectedAttachment.size);
-        console.log('🔍 Template object:', template);
-        console.log('🔍 Template ID type:', typeof template.id, 'Value:', template.id);
-        
-        // Validate template has required properties
-        if (!template.id) {
-          console.error('❌ Template missing ID property:', template);
-          alert('Template update failed: Missing template ID. Please try again.');
-          return;
-        }
-        
-        const formData = new FormData();
-        formData.append('template_id', template.id);
-        formData.append('attachment', selectedAttachment);
-        
-        // Debug: Log form data contents
-        console.log('🔍 Form data contents:');
-        console.log('  template_id:', template.id);
-        console.log('  attachment:', selectedAttachment.name, selectedAttachment.size, selectedAttachment.type);
-        
-        // Debug: Check what's actually being sent
-        console.log('🔍 FormData template_id value:', formData.get('template_id'));
-        console.log('🔍 FormData template_id type:', typeof formData.get('template_id'));
-        
-        try {
-          const attachmentResponse = await fetch(`${API_BASE_URL}/template-attachment`, {
-            method: 'POST',
-            credentials: 'include', // Include session cookies
-            body: formData,
-          });
-          
-          console.log('🔍 Attachment response status:', attachmentResponse.status);
-          
-          if (attachmentResponse.ok) {
-            const result = await attachmentResponse.json();
-            console.log('🔍 Attachment upload result:', result);
-            alert(editMode ? 'Template with new attachment updated successfully!' : 'Template with attachment saved successfully!');
-          } else {
-            const error = await attachmentResponse.json();
-            console.error('❌ Attachment upload failed:', error);
-            alert(editMode ? `Template updated but new attachment upload failed: ${error.error}` : `Template saved but attachment upload failed: ${error.error}`);
-          }
-        } catch (error) {
-          console.error('❌ Attachment upload error:', error);
-          alert(editMode ? 'Template updated but new attachment upload failed due to network error.' : 'Template saved but attachment upload failed due to network error.');
-        }
+      // Show success message
+      if (selectedAttachment) {
+        alert(editMode ? 'Template with new attachment updated successfully!' : 'Template with attachment saved successfully!');
       } else if (editMode && attachmentName && !selectedAttachment) {
         // In edit mode, if there's an existing attachment and no new one selected, keep the existing
         console.log('🔍 Keeping existing attachment:', attachmentName);

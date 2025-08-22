@@ -20,10 +20,16 @@ interface Contact {
 
 interface PreviewResult {
   contact: Contact;
-  rendered_subject?: string;
-  rendered_body?: string;
+  subject: string;
+  content: string;
+  content_preview: string;
   status: string;
   error?: string;
+  contact_summary: {
+    name: string;
+    email: string;
+    company: string;
+  };
 }
 
 const MailMerge: React.FC = () => {
@@ -243,6 +249,24 @@ const MailMerge: React.FC = () => {
           <h1 className="text-3xl font-bold text-gray-900">InMailer</h1>
         </div>
 
+        {/* Sender Name Information */}
+        <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0">
+              <svg className="w-5 h-5 text-green-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-medium text-green-800">How Sender Name Works</h3>
+              <p className="text-sm text-green-700 mt-1">
+                Your emails will show your name from the database as the sender, but they are sent from your authenticated Gmail account. 
+                This is a Gmail API limitation - the actual sending account cannot be changed, only the display name.
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Left Column - Upload & Template Selection */}
           <div className="space-y-6">
@@ -421,6 +445,28 @@ const MailMerge: React.FC = () => {
               )}
             </div>
             
+            {/* Preview Summary */}
+            {previewData.length > 0 && selectedTemplate && (
+              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium text-blue-900">Template: {selectedTemplate.name}</h3>
+                    <p className="text-sm text-blue-700 mt-1">
+                      Showing preview for first {previewData.length} contacts
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-blue-600 font-medium">
+                      {contacts.length} total contacts
+                    </p>
+                    <p className="text-xs text-blue-500">
+                      Variables will be replaced with actual data
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             {previewData.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
                 <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
@@ -429,35 +475,82 @@ const MailMerge: React.FC = () => {
             ) : (
               <div className="h-[600px] overflow-y-auto space-y-4 pr-2">
                 {previewData.map((result, index) => {
-                  const contactInfo = getContactDisplayInfo(result.contact);
+                  // Enhanced contact name extraction - handle various CSV column name formats
+                  const contactName = result.contact_summary?.name || 
+                    result.contact?.First_Name || 
+                    result.contact?.first_name || 
+                    result.contact?.Name || 
+                    result.contact?.name ||
+                    result.contact?.['First Name'] ||
+                    result.contact?.['first name'] ||
+                    result.contact?.['First_Name'] ||
+                    result.contact?.['firstName'] ||
+                    result.contact?.['FirstName'] ||
+                    'Unknown';
+                  
+                  const contactEmail = result.contact_summary?.email || 
+                    result.contact?.Email || 
+                    result.contact?.email || 
+                    result.contact?.['Email Address'] ||
+                    result.contact?.['email address'] ||
+                    result.contact?.['EmailAddress'] ||
+                    'No email';
+                  
+                  const contactCompany = result.contact_summary?.company || 
+                    result.contact?.Company || 
+                    result.contact?.company || 
+                    result.contact?.['Company Name'] ||
+                    result.contact?.['company name'] ||
+                    result.contact?.['CompanyName'] ||
+                    result.contact?.['Organization'] ||
+                    result.contact?.['organization'] ||
+                    'No company';
+                  
+                  const subject = result.subject || 'No subject';
+                  const contentPreview = result.content_preview || result.content?.substring(0, 150) + '...' || 'No content';
+                  
                   return (
                     <div key={index} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-medium text-gray-900">
-                          {contactInfo.name}
-                        </h4>
-                        <span className="text-xs text-gray-500">
-                          {contactInfo.email}
+                      {/* Contact Header */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h4 className="font-medium text-gray-900">
+                            {contactName}
+                          </h4>
+                          <p className="text-xs text-gray-500">
+                            {contactEmail}
+                          </p>
+                          {contactCompany !== 'No company' && (
+                            <p className="text-xs text-blue-600">
+                              {contactCompany}
+                            </p>
+                          )}
+                        </div>
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          result.status === 'preview' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {result.status}
                         </span>
                       </div>
                       
-                      {result.rendered_subject && (
-                        <div className="mb-2">
-                          <p className="text-xs text-gray-500 uppercase tracking-wide">Subject:</p>
-                          <p className="text-sm font-medium">{result.rendered_subject}</p>
-                        </div>
-                      )}
+                      {/* Subject Line */}
+                      <div className="mb-3 p-3 bg-gray-50 rounded-lg">
+                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Subject:</p>
+                        <p className="text-sm font-medium text-gray-900">{subject}</p>
+                      </div>
                       
-                      {result.rendered_body && (
-                        <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wide">Content:</p>
-                          <p className="text-sm whitespace-pre-line">{result.rendered_body}</p>
-                        </div>
-                      )}
+                      {/* Email Content Preview */}
+                      <div className="mb-3 p-3 bg-gray-50 rounded-lg">
+                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Content Preview:</p>
+                        <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
+                          {contentPreview}
+                        </p>
+                      </div>
                       
+                      {/* Attachment */}
                       {selectedTemplate?.attachment_name && (
-                        <div className="mt-2 pt-2 border-t border-gray-100">
-                          <p className="text-xs text-gray-500 uppercase tracking-wide">Attachment:</p>
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Attachment:</p>
                           <p className="text-sm text-green-600 flex items-center gap-1">
                             📎 {selectedTemplate.attachment_name}
                           </p>

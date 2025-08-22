@@ -14,13 +14,25 @@
   {
     "id": "2",
     "name": "Test Template",
-    "subject": "Hi ${First_Name}- Application for SDE Role",
-    "content": "Hi ${First_Name},\nYou're work at ${Company} is amazing !!!",
+    "subject": "Hello ${First_Name}",
+    "content": "Testing This ${First_Name}\n${Company}",
+    "variables": [
+      "Name",
+      "Company"
+    ],
+    "attachment_path": "Templates\\attachments\\ParvaShah_Resume_11.pdf",
+    "attachment_name": "ParvaShah_Resume.pdf"
+  },
+  {
+    "id": "3",
+    "name": "Account 1",
+    "subject": "Hello ${First_Name}",
+    "content": "${Company}",
     "variables": [
       "First_Name",
       "Company"
     ],
-    "attachment_path": "Templates\\attachments\\ParvaShah_Resume_9.pdf",
+    "attachment_path": "Templates\\attachments\\ParvaShah_Resume_12.pdf",
     "attachment_name": "ParvaShah_Resume.pdf"
   }
 ]
