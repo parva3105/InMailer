@@ -99,6 +99,7 @@ const TemplateCreator: React.FC = () => {
           headers: {
             'Content-Type': 'application/json',
           },
+          credentials: 'include', // Include session cookies
           body: JSON.stringify({
             name: templateName,
             subject: subject,
@@ -122,6 +123,7 @@ const TemplateCreator: React.FC = () => {
           headers: {
             'Content-Type': 'application/json',
           },
+          credentials: 'include', // Include session cookies
           body: JSON.stringify({
             name: templateName,
             subject: subject,
@@ -169,6 +171,7 @@ const TemplateCreator: React.FC = () => {
         try {
           const attachmentResponse = await fetch(`${API_BASE_URL}/template-attachment`, {
             method: 'POST',
+            credentials: 'include', // Include session cookies
             body: formData,
           });
           

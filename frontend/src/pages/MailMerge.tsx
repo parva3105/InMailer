@@ -43,7 +43,9 @@ const MailMerge: React.FC = () => {
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/templates`);
+      const response = await fetch(`${API_BASE_URL}/templates`, {
+        credentials: 'include' // Include session cookies
+      });
       if (response.ok) {
         const data = await response.json();
         setTemplates(data);
@@ -62,6 +64,7 @@ const MailMerge: React.FC = () => {
       try {
         const response = await fetch(`${API_BASE_URL}/templates/${templateId}`, {
           method: 'DELETE',
+          credentials: 'include', // Include session cookies
         });
         
         if (response.ok) {
@@ -151,6 +154,7 @@ const MailMerge: React.FC = () => {
 
       const response = await fetch(`${API_BASE_URL}/mail-merge`, {
         method: 'POST',
+        credentials: 'include', // Include session cookies
         body: formData,
       });
 
@@ -183,6 +187,7 @@ const MailMerge: React.FC = () => {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // Important: Include session cookies
         body: JSON.stringify({
           template_id: selectedTemplate.id,
           contacts: contacts
