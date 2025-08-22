@@ -140,7 +140,7 @@ def send_via_sendgrid(msg_from: str, msg_to: str, subject: str, body: str, attac
         raise RuntimeError(f"SendGrid error: status={{response.status_code}} body={{response.body}}")
 
 def main():
-    parser = argparse.ArgumentParser(description="CSV Mail Merge Sender")
+    parser = argparse.ArgumentParser(description="CSV InMailer Sender")
     parser.add_argument("--csv", required=True, help="Path to contacts CSV with columns: email, first_name, company")
     parser.add_argument("--template", required=True, help="Path to template.txt (first line 'Subject: ...')")
     parser.add_argument("--from", dest="from_addr", required=True, help="From email address")

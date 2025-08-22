@@ -1,6 +1,6 @@
-# Mail Merge Kit - Backend API
+# InMailer - Backend API
 
-A Flask-based API server that powers the Mail Merge Kit frontend application.
+A Flask-based API server that powers the InMailer frontend application.
 
 ## 🚀 Quick Start
 

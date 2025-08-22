@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Save, Plus, X, Upload, FileText, Trash2 } from 'lucide-react';
 
 const API_BASE_URL = 'http://localhost:5000/api';
@@ -13,7 +13,26 @@ const TemplateCreator: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [selectedAttachment, setSelectedAttachment] = useState<File | null>(null);
   const [attachmentName, setAttachmentName] = useState<string>('');
+  const [editMode, setEditMode] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string>('');
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Check if we're in edit mode and populate form with existing template data
+  useEffect(() => {
+    if (location.state?.editMode && location.state?.template) {
+      const template = location.state.template;
+      setEditMode(true);
+      setEditingTemplateId(template.id);
+      setTemplateName(template.name);
+      setSubject(template.subject);
+      setContent(template.content);
+      setVariables(template.variables || []);
+      if (template.attachment_name) {
+        setAttachmentName(template.attachment_name);
+      }
+    }
+  }, [location.state]);
 
   const addVariable = () => {
     if (newVariable.trim() && !variables.includes(newVariable.trim())) {
@@ -71,49 +90,113 @@ const TemplateCreator: React.FC = () => {
     setIsSaving(true);
     
     try {
-      // First, create the template
-      const response = await fetch(`${API_BASE_URL}/templates`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: templateName,
-          subject: subject,
-          content: content,
-          variables: variables
-        }),
-      });
+      let template;
+      
+      if (editMode) {
+        // Update existing template
+        const response = await fetch(`${API_BASE_URL}/templates/${editingTemplateId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: templateName,
+            subject: subject,
+            content: content,
+            variables: variables
+          }),
+        });
 
-      if (response.ok) {
-        const result = await response.json();
-        const template = result.template;
+        if (response.ok) {
+          const result = await response.json();
+          template = result.template; // Extract template from response
+        } else {
+          const error = await response.json();
+          alert(`Error updating template: ${error.error}`);
+          return;
+        }
+      } else {
+        // Create new template
+        const response = await fetch(`${API_BASE_URL}/templates`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: templateName,
+            subject: subject,
+            content: content,
+            variables: variables
+          }),
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          template = result.template;
+        } else {
+          const error = await response.json();
+          alert(`Error saving template: ${error.error}`);
+          return;
+        }
+      }
+      
+      // If there's a new attachment, upload it
+      if (selectedAttachment && template) {
+        console.log('🔍 Uploading new attachment:', selectedAttachment.name, selectedAttachment.size);
+        console.log('🔍 Template object:', template);
+        console.log('🔍 Template ID type:', typeof template.id, 'Value:', template.id);
         
-        // If there's an attachment, upload it
-        if (selectedAttachment && template) {
-          const formData = new FormData();
-          formData.append('template_id', template.id);
-          formData.append('attachment', selectedAttachment);
-          
+        // Validate template has required properties
+        if (!template.id) {
+          console.error('❌ Template missing ID property:', template);
+          alert('Template update failed: Missing template ID. Please try again.');
+          return;
+        }
+        
+        const formData = new FormData();
+        formData.append('template_id', template.id);
+        formData.append('attachment', selectedAttachment);
+        
+        // Debug: Log form data contents
+        console.log('🔍 Form data contents:');
+        console.log('  template_id:', template.id);
+        console.log('  attachment:', selectedAttachment.name, selectedAttachment.size, selectedAttachment.type);
+        
+        // Debug: Check what's actually being sent
+        console.log('🔍 FormData template_id value:', formData.get('template_id'));
+        console.log('🔍 FormData template_id type:', typeof formData.get('template_id'));
+        
+        try {
           const attachmentResponse = await fetch(`${API_BASE_URL}/template-attachment`, {
             method: 'POST',
             body: formData,
           });
           
+          console.log('🔍 Attachment response status:', attachmentResponse.status);
+          
           if (attachmentResponse.ok) {
-            alert('Template with attachment saved successfully!');
+            const result = await attachmentResponse.json();
+            console.log('🔍 Attachment upload result:', result);
+            alert(editMode ? 'Template with new attachment updated successfully!' : 'Template with attachment saved successfully!');
           } else {
-            alert('Template saved but attachment upload failed. You can add the attachment later.');
+            const error = await attachmentResponse.json();
+            console.error('❌ Attachment upload failed:', error);
+            alert(editMode ? `Template updated but new attachment upload failed: ${error.error}` : `Template saved but attachment upload failed: ${error.error}`);
           }
-        } else {
-          alert('Template saved successfully!');
+        } catch (error) {
+          console.error('❌ Attachment upload error:', error);
+          alert(editMode ? 'Template updated but new attachment upload failed due to network error.' : 'Template saved but attachment upload failed due to network error.');
         }
-        
-        navigate('/');
+      } else if (editMode && attachmentName && !selectedAttachment) {
+        // In edit mode, if there's an existing attachment and no new one selected, keep the existing
+        console.log('🔍 Keeping existing attachment:', attachmentName);
+        alert('Template updated successfully! Existing attachment preserved.');
       } else {
-        const error = await response.json();
-        alert(`Error saving template: ${error.error}`);
+        console.log('🔍 No attachment to upload');
+        alert(editMode ? 'Template updated successfully!' : 'Template saved successfully!');
       }
+      
+      navigate('/');
     } catch (error) {
       console.error('Error saving template:', error);
       alert('Error saving template. Please check if the backend server is running.');
@@ -133,7 +216,9 @@ const TemplateCreator: React.FC = () => {
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <h1 className="text-3xl font-bold text-gray-900">Create Email Template</h1>
+          <h1 className="text-3xl font-bold text-gray-900">
+            {editMode ? 'Edit Email Template' : 'Create Email Template'}
+          </h1>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm p-6">
@@ -246,6 +331,18 @@ const TemplateCreator: React.FC = () => {
               Add a resume, portfolio, or any document that will be automatically attached to emails sent with this template.
             </p>
             
+            {/* Show existing attachment if editing */}
+            {editMode && attachmentName && !selectedAttachment && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-blue-800 text-sm">
+                  📎 Current attachment: <span className="font-medium">{attachmentName}</span>
+                </p>
+                <p className="text-blue-700 text-xs mt-1">
+                  Upload a new file to replace the current attachment, or leave empty to keep the existing one
+                </p>
+              </div>
+            )}
+            
             {!selectedAttachment ? (
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
                 <input
@@ -309,13 +406,32 @@ const TemplateCreator: React.FC = () => {
               ) : (
                 <>
                   <Save className="w-5 h-5" />
-                  Save Template
+                  {editMode ? 'Update Template' : 'Save Template'}
                 </>
               )}
             </button>
           </div>
         </div>
       </div>
+      
+      {/* Footer */}
+      <footer className="mt-16 border-t border-gray-200 bg-white">
+        <div className="max-w-6xl mx-auto px-4 py-6">
+          <div className="text-center text-gray-600">
+            <p className="text-sm">
+              © 2024 Made by{' '}
+              <a 
+                href="https://www.linkedin.com/in/parva3105" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-800 font-medium transition-colors underline decoration-blue-300 hover:decoration-blue-600"
+              >
+                Parva Shah
+              </a>
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 };
