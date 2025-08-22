@@ -1,4 +1,4 @@
-# Mail Merge Kit - Frontend
+# InMailer - Frontend
 
 A simple, streamlined mail merge application built with React and TypeScript.
 

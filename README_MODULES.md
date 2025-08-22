@@ -1,6 +1,6 @@
-# Mail Merge Kit - Enhanced Modules
+# InMailer - Enhanced Modules
 
-This enhanced version of the mail merge kit includes logging, tracking, and duplicate prevention features while maintaining the original functionality.
+This enhanced version of InMailer includes logging, tracking, and duplicate prevention features while maintaining the original functionality.
 
 ## New Features
 

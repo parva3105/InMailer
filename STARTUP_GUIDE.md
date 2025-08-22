@@ -1,4 +1,4 @@
-# 🚀 Mail Merge Kit - Startup Guide
+# 🚀 InMailer - Startup Guide
 
 ## 🎯 What You Have Now
 
@@ -28,7 +28,7 @@
 
 5. **You should see:**
    ```
-   🚀 Starting Mail Merge Kit API Server...
+   🚀 Starting InMailer API Server...
    📍 Server will run on: http://localhost:5000
    🔗 API endpoints available at: http://localhost:5000/api/
    ```
@@ -101,5 +101,3 @@ Now you have a **fully functional mail merge system**:
 - 🔧 Powerful Python backend
 - 📧 Real email processing
 - 🔗 Seamless integration
-
-**Happy Email Marketing! 🚀**

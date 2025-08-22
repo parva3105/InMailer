@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple startup script for the Mail Merge Kit Flask API server
+Simple startup script for the InMailer Flask API server
 """
 
 import os
@@ -14,7 +14,7 @@ try:
     from app import app
     
     if __name__ == '__main__':
-        print("🚀 Starting Mail Merge Kit API Server...")
+        print("🚀 Starting InMailer API Server...")
         print("📍 Server will run on: http://localhost:5000")
         print("🔗 API endpoints available at: http://localhost:5000/api/")
         print("📧 Make sure to set EMAIL_USER and EMAIL_PASSWORD environment variables for email functionality")

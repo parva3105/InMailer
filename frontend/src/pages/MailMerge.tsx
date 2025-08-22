@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Upload, FileText, Send, Eye, Download } from 'lucide-react';
+import { ArrowLeft, Upload, FileText, Send, Eye, Download, Trash2, Edit3 } from 'lucide-react';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -55,6 +55,52 @@ const MailMerge: React.FC = () => {
     } finally {
       setIsLoadingTemplates(false);
     }
+  };
+
+  const deleteTemplate = async (templateId: string, templateName: string) => {
+    if (window.confirm(`Are you sure you want to delete the template "${templateName}"?`)) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/templates/${templateId}`, {
+          method: 'DELETE',
+        });
+        
+        if (response.ok) {
+          // Remove template from local state
+          setTemplates(prev => prev.filter(t => t.id !== templateId));
+          
+          // If the deleted template was selected, clear selection
+          if (selectedTemplate?.id === templateId) {
+            setSelectedTemplate(null);
+          }
+          
+          // Clear preview data if it was for the deleted template
+          if (selectedTemplate?.id === templateId) {
+            setPreviewData([]);
+          }
+          
+          console.log('Template deleted successfully');
+        } else {
+          console.error('Failed to delete template');
+          alert('Failed to delete template. Please try again.');
+        }
+      } catch (error) {
+        console.error('Error deleting template:', error);
+        alert('Error deleting template. Please try again.');
+      }
+    }
+  };
+
+  const editTemplate = (template: Template) => {
+    console.log('🔍 Edit template called with:', template);
+    console.log('🔍 Template ID in editTemplate:', template.id, 'Type:', typeof template.id);
+    
+    // Navigate to template creator with template data
+    navigate('/templates', { 
+      state: { 
+        editMode: true, 
+        template: template 
+      } 
+    });
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -144,7 +190,7 @@ const MailMerge: React.FC = () => {
       });
 
       if (response.ok) {
-        const result = await response.json();
+        await response.json(); // Consume response without assigning to unused variable
         alert(`Successfully processed ${contacts.length} emails!`);
         navigate('/');
       } else {
@@ -189,7 +235,7 @@ const MailMerge: React.FC = () => {
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <h1 className="text-3xl font-bold text-gray-900">Mail Merge</h1>
+          <h1 className="text-3xl font-bold text-gray-900">InMailer</h1>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -236,67 +282,93 @@ const MailMerge: React.FC = () => {
               </button>
             </div>
 
-            {/* Template Selection */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">2. Select Template</h2>
-                <button
-                  onClick={() => navigate('/templates')}
-                  className="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  + New Template
-                </button>
-              </div>
-              
-              {isLoadingTemplates ? (
-                <div className="text-center py-8">
-                  <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                  <p className="text-gray-500">Loading templates...</p>
-                </div>
-              ) : templates.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                  <p>No templates available</p>
-                  <p className="text-sm mt-2">Create a template first to get started</p>
-                  <button
-                    onClick={() => navigate('/templates')}
-                    className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Create Template
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {templates.map((template) => (
-                    <div
-                      key={template.id}
-                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                        selectedTemplate?.id === template.id
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                      onClick={() => handleTemplateSelect(template)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="font-medium text-gray-900">{template.name}</h3>
-                          <p className="text-sm text-gray-600 mt-1">{template.subject}</p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Variables: {template.variables.join(', ')}
-                          </p>
-                          {template.attachment_name && (
-                            <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                              📎 {template.attachment_name}
-                            </p>
-                          )}
-                        </div>
-                        <FileText className="w-5 h-5 text-gray-400" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                         {/* Template Selection */}
+             <div className="bg-white rounded-xl shadow-sm p-6">
+               <div className="flex items-center justify-between mb-4">
+                 <h2 className="text-xl font-semibold text-gray-900">2. Select Template</h2>
+                 <button
+                   onClick={() => navigate('/templates')}
+                   className="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+                 >
+                   + New Template
+                 </button>
+               </div>
+               
+               {isLoadingTemplates ? (
+                 <div className="text-center py-8">
+                   <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                   <p className="text-gray-500">Loading templates...</p>
+                 </div>
+               ) : templates.length === 0 ? (
+                 <div className="text-center py-8 text-gray-500">
+                   <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                   <p>No templates available</p>
+                   <p className="text-sm mt-2">Create a template first to get started</p>
+                   <button
+                     onClick={() => navigate('/templates')}
+                     className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                   >
+                     Create Template
+                   </button>
+                 </div>
+               ) : (
+                 <div className="max-h-64 overflow-y-auto space-y-3 pr-2">
+                   {templates.map((template) => (
+                     <div
+                       key={template.id}
+                       className={`p-4 border rounded-lg transition-colors ${
+                         selectedTemplate?.id === template.id
+                           ? 'border-blue-500 bg-blue-50'
+                           : 'border-gray-200 hover:border-gray-300'
+                       }`}
+                     >
+                       <div className="flex items-center justify-between">
+                         <div 
+                           className="flex-1 cursor-pointer"
+                           onClick={() => handleTemplateSelect(template)}
+                         >
+                           <h3 className="font-medium text-gray-900">{template.name}</h3>
+                           <p className="text-sm text-gray-600 mt-1">{template.subject}</p>
+                           <p className="text-xs text-gray-500 mt-1">
+                             Variables: {template.variables.join(', ')}
+                           </p>
+                           {template.attachment_name && (
+                             <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                               📎 {template.attachment_name}
+                             </p>
+                           )}
+                         </div>
+                         <div className="flex items-center gap-2">
+                           <FileText className="w-5 h-5 text-gray-400" />
+                           <button
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               editTemplate(template);
+                             }}
+                             onMouseDown={(e) => e.stopPropagation()}
+                             className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                             title="Edit template"
+                           >
+                             <Edit3 className="w-4 h-4" />
+                           </button>
+                           <button
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               deleteTemplate(template.id, template.name);
+                             }}
+                             onMouseDown={(e) => e.stopPropagation()}
+                             className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                             title="Delete template"
+                           >
+                             <Trash2 className="w-4 h-4" />
+                           </button>
+                         </div>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+               )}
+             </div>
 
             {/* Action Buttons */}
             <div className="bg-white rounded-xl shadow-sm p-6">
@@ -335,7 +407,14 @@ const MailMerge: React.FC = () => {
 
           {/* Right Column - Preview */}
           <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Preview</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">Preview</h2>
+              {previewData.length > 0 && (
+                <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                  {previewData.length} of {contacts.length} contacts
+                </span>
+              )}
+            </div>
             
             {previewData.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
@@ -343,7 +422,7 @@ const MailMerge: React.FC = () => {
                 <p>Upload a CSV file and select a template to see preview</p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="h-[600px] overflow-y-auto space-y-4 pr-2">
                 {previewData.map((result, index) => {
                   const contactInfo = getContactDisplayInfo(result.contact);
                   return (
@@ -383,6 +462,14 @@ const MailMerge: React.FC = () => {
                   );
                 })}
                 
+                {previewData.length > 5 && (
+                  <div className="text-center py-4 border-t border-gray-100">
+                    <p className="text-sm text-gray-500">
+                      Scroll to see all {previewData.length} previews
+                    </p>
+                  </div>
+                )}
+                
                 {contacts.length > previewData.length && (
                   <p className="text-center text-sm text-gray-500 py-2">
                     ... and {contacts.length - previewData.length} more contacts
@@ -391,10 +478,29 @@ const MailMerge: React.FC = () => {
               </div>
             )}
           </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default MailMerge;
+                 </div>
+       </div>
+       
+       {/* Footer */}
+       <footer className="mt-16 border-t border-gray-200 bg-white">
+         <div className="max-w-6xl mx-auto px-4 py-6">
+           <div className="text-center text-gray-600">
+             <p className="text-sm">
+               © 2024 Made by{' '}
+               <a 
+                 href="https://www.linkedin.com/in/parva3105" 
+                 target="_blank" 
+                 rel="noopener noreferrer"
+                 className="text-blue-600 hover:text-blue-800 font-medium transition-colors underline decoration-blue-300 hover:decoration-blue-600"
+               >
+                 Parva Shah
+               </a>
+             </p>
+           </div>
+         </div>
+       </footer>
+     </div>
+   );
+ };
+ 
+ export default MailMerge;
