@@ -479,10 +479,15 @@ def create_app():
     # Configure Flask app
     app.secret_key = os.getenv('FLASK_SECRET_KEY', 'inmailer-secret-key-change-in-production')
     
-    # Use simple Flask sessions (no flask-session) for better reliability
+    # Enhanced session configuration for better reliability
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
+    app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_DOMAIN'] = None  # Allow localhost
     
-    print("📁 Using simple Flask sessions for better reliability")
+    print("📁 Using enhanced Flask sessions for better reliability")
+    print(f"🔑 Secret key configured: {'Yes' if app.secret_key != 'inmailer-secret-key-change-in-production' else 'No (using default)'}")
     
     # CORS configuration with specific settings for sessions
     CORS(app, 
@@ -1031,9 +1036,20 @@ def mail_merge_preview():
 def send_emails():
     """Send emails using mail merge"""
     try:
+        # Debug session information
+        print(f"🔍 === SEND-EMAILS DEBUG ===")
+        print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
+        print(f"🔍 Session keys: {list(session.keys())}")
+        print(f"🔍 User info in session: {session.get('user_info')}")
+        print(f"🔍 Credentials in session: {session.get('credentials')}")
+        print(f"🔍 Request cookies: {dict(request.cookies)}")
+        print(f"🔍 Request origin: {request.headers.get('Origin')}")
+        print(f"🔍 =========================")
+        
         # Get user from session
         user_info = session.get('user_info')
         if not user_info:
+            print("❌ No user_info found in session")
             return jsonify({'error': 'Not authenticated'}), 401
         
         user_email = user_info.get('email')
@@ -1057,7 +1073,12 @@ def send_emails():
         # Get user credentials from session
         credentials_data = session.get('credentials')
         if not credentials_data:
-            return jsonify({'error': 'No Gmail credentials found. Please sign in with Google again.'}), 401
+            print("❌ No credentials found in session")
+            return jsonify({
+                'error': 'No Gmail credentials found. Please sign in with Google again.',
+                'action': 'sign_in_required',
+                'details': 'Your OAuth session has expired or is missing. Please sign in again to refresh your Gmail access.'
+            }), 401
         
         # Recreate credentials object with proper error handling
         from google.oauth2.credentials import Credentials
@@ -1069,7 +1090,13 @@ def send_emails():
         if missing_fields:
             print(f"❌ Missing required credential fields: {missing_fields}")
             print(f"🔍 Available fields: {list(credentials_data.keys())}")
-            return jsonify({'error': f'Missing required Gmail credentials: {missing_fields}. Please sign in with Google again.'}), 401
+            return jsonify({
+                'error': f'Missing required Gmail credentials: {missing_fields}. Please sign in with Google again.',
+                'action': 'reauth_required',
+                'details': f'The OAuth session is incomplete. Missing: {missing_fields}. This usually happens when Google doesn\'t provide all required tokens. Try signing out completely and signing in again.',
+                'missing_fields': missing_fields,
+                'available_fields': list(credentials_data.keys())
+            }), 401
         
         try:
             credentials = Credentials(
@@ -1289,7 +1316,8 @@ def google_auth():
         
         authorization_url, state = flow.authorization_url(
             access_type='offline',
-            include_granted_scopes='true'
+            include_granted_scopes='true',
+            prompt='consent'
         )
         
         # Store state in session for security
@@ -1349,6 +1377,15 @@ def google_callback():
         credentials = flow.credentials
         print("✅ Tokens received successfully")
         
+        # Debug credential details
+        print(f"🔍 Credential details:")
+        print(f"🔍 - Has token: {'Yes' if credentials.token else 'No'}")
+        print(f"🔍 - Has refresh_token: {'Yes' if credentials.refresh_token else 'No'}")
+        print(f"🔍 - Token URI: {credentials.token_uri}")
+        print(f"🔍 - Client ID: {credentials.client_id}")
+        print(f"🔍 - Has client_secret: {'Yes' if credentials.client_secret else 'No'}")
+        print(f"🔍 - Scopes: {credentials.scopes}")
+        
         # Handle scope differences (Google might add 'openid' automatically)
         print(f"🔍 Received scopes: {credentials.scopes}")
         print(f"🔍 Expected scopes: {SCOPES}")
@@ -1394,6 +1431,18 @@ def google_callback():
         
         print("✅ All required scopes are present!")
         
+        # Check if we have a refresh token - this is critical for long-term access
+        if not credentials.refresh_token:
+            print("❌ CRITICAL: No refresh token received from Google!")
+            print("❌ This usually means the user needs to re-authorize with explicit consent")
+            print("❌ The 'prompt=consent' parameter should force this, but it may not work for existing users")
+            return jsonify({
+                'error': 'No refresh token received. This usually happens when re-authorizing an existing user. Please try signing out completely and signing in again, or use a different Google account.',
+                'details': 'Google only provides refresh tokens on first authorization or when explicitly requested. Try signing out and signing in again.'
+            }), 400
+        
+        print("✅ Refresh token received successfully!")
+        
         # Get user information
         print("🔄 Getting user information...")
         user_info = get_user_info(credentials)
@@ -1416,6 +1465,14 @@ def google_callback():
             'client_secret': credentials.client_secret,
             'scopes': credentials.scopes
         }
+        
+        # Debug session storage
+        print(f"🔍 === OAUTH CALLBACK DEBUG ===")
+        print(f"🔍 Session ID after storing: {session.get('_id', 'No ID')}")
+        print(f"🔍 Session keys after storing: {list(session.keys())}")
+        print(f"🔍 Credentials stored: {list(session.get('credentials', {}).keys())}")
+        print(f"🔍 Has refresh_token: {'Yes' if session.get('credentials', {}).get('refresh_token') else 'No'}")
+        print(f"🔍 ==============================")
         
         # Also store in our database system
         user_email = user_info.get('email')
@@ -1478,8 +1535,144 @@ def get_user():
 @app.route('/auth/logout')
 def logout():
     """Logout user and clear session"""
-    session.clear()
-    return jsonify({'message': 'Logged out successfully'})
+    try:
+        # Get user info before clearing for logging
+        user_email = session.get('user_info', {}).get('email', 'Unknown')
+        print(f"🔍 Logging out user: {user_email}")
+        
+        # Clear all session data
+        session.clear()
+        
+        print(f"✅ Session cleared for user: {user_email}")
+        return jsonify({
+            'message': 'Logged out successfully',
+            'user': user_email,
+            'note': 'All session data and OAuth tokens have been cleared. You will need to sign in again to use Gmail features.'
+        })
+    except Exception as e:
+        print(f"❌ Error during logout: {e}")
+        # Still try to clear session even if there's an error
+        session.clear()
+        return jsonify({'message': 'Logged out (with errors)', 'error': str(e)}), 500
+
+@app.route('/auth/force-reauth')
+def force_reauth():
+    """Force user to re-authenticate by clearing credentials and redirecting to OAuth"""
+    try:
+        user_email = session.get('user_info', {}).get('email', 'Unknown')
+        print(f"🔍 Force re-authentication for user: {user_email}")
+        
+        # Clear only credentials, keep user info for the OAuth flow
+        if 'credentials' in session:
+            del session['credentials']
+            print(f"✅ Credentials cleared for user: {user_email}")
+        
+        # Redirect to OAuth flow
+        return redirect('/auth/google')
+        
+    except Exception as e:
+        print(f"❌ Error during force re-auth: {e}")
+        return jsonify({'error': 'Failed to force re-authentication'}), 500
+
+@app.route('/auth/validate-credentials')
+def validate_credentials():
+    """Validate if current Gmail credentials are still valid"""
+    try:
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        credentials_data = session.get('credentials')
+        if not credentials_data:
+            return jsonify({
+                'valid': False,
+                'error': 'No credentials found',
+                'action': 'sign_in_required'
+            }), 200
+        
+        # Check if all required fields are present
+        required_fields = ['token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']
+        missing_fields = [field for field in required_fields if not credentials_data.get(field)]
+        
+        if missing_fields:
+            return jsonify({
+                'valid': False,
+                'error': f'Missing credential fields: {missing_fields}',
+                'action': 'reauth_required',
+                'missing_fields': missing_fields
+            }), 200
+        
+        # Try to recreate credentials object
+        try:
+            from google.oauth2.credentials import Credentials
+            credentials = Credentials(
+                token=credentials_data['token'],
+                refresh_token=credentials_data['refresh_token'],
+                token_uri=credentials_data['token_uri'],
+                client_id=credentials_data['client_id'],
+                client_secret=credentials_data['client_secret'],
+                scopes=credentials_data['scopes']
+            )
+            
+            # Test if credentials work by making a simple Gmail API call
+            from googleapiclient.discovery import build
+            service = build('gmail', 'v1', credentials=credentials)
+            
+            # Try to get user profile (lightweight call)
+            profile = service.users().getProfile(userId='me').execute()
+            
+            return jsonify({
+                'valid': True,
+                'user_email': profile.get('emailAddress'),
+                'message': 'Credentials are valid and working'
+            })
+            
+        except Exception as e:
+            return jsonify({
+                'valid': False,
+                'error': f'Credentials validation failed: {str(e)}',
+                'action': 'reauth_required'
+            }), 200
+            
+    except Exception as e:
+        return jsonify({
+            'valid': False,
+            'error': f'Validation error: {str(e)}',
+            'action': 'unknown_error'
+        }), 500
+
+@app.route('/auth/debug-session')
+def debug_session():
+    """Debug endpoint to check session state"""
+    print(f"🔍 === SESSION DEBUG ENDPOINT ===")
+    print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
+    print(f"🔍 Session keys: {list(session.keys())}")
+    print(f"🔍 User info: {session.get('user_info')}")
+    print(f"🔍 Credentials: {session.get('credentials')}")
+    print(f"🔍 Request cookies: {dict(request.cookies)}")
+    print(f"🔍 Request origin: {request.headers.get('Origin')}")
+    print(f"🔍 ==============================")
+    
+    credentials_data = session.get('credentials', {})
+    required_fields = ['token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']
+    missing_fields = [field for field in required_fields if not credentials_data.get(field)]
+    
+    return jsonify({
+        'session_id': session.get('_id'),
+        'session_keys': list(session.keys()),
+        'user_info': session.get('user_info'),
+        'has_credentials': bool(credentials_data),
+        'credentials_keys': list(credentials_data.keys()) if credentials_data else [],
+        'missing_credential_fields': missing_fields,
+        'has_refresh_token': bool(credentials_data.get('refresh_token')),
+        'credential_status': 'complete' if not missing_fields else 'incomplete',
+        'cookies': dict(request.cookies),
+        'origin': request.headers.get('Origin'),
+        'recommendations': {
+            'action_needed': 'reauth' if missing_fields else 'none',
+            'message': 'Credentials are incomplete. Please sign in again.' if missing_fields else 'Credentials look complete.'
+        }
+    })
 
 # Keep other existing routes for compatibility
 @app.route('/api/health', methods=['GET'])
