@@ -141,6 +141,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   useEffect(() => {
+    // Set axios base URL from environment variable
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+    axios.defaults.baseURL = apiUrl;
+    
+    // Check if user is already authenticated
     checkSession();
   }, []);
 

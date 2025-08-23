@@ -72,9 +72,8 @@ const SignUp: React.FC = () => {
   };
 
   const handleGoogleSignUp = () => {
-    // Direct redirect to backend OAuth endpoint
-    // The backend will handle the OAuth flow and redirect back to frontend
-    window.location.href = 'http://localhost:5000/auth/google';
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+    window.location.href = `${apiUrl}/auth/google`;
   };
 
   return (

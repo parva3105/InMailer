@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Mail, Upload, FileText, LogOut, User, Settings } from 'lucide-react';
+import axios from 'axios';
 
 interface DashboardStats {
   template_count: number;
@@ -38,31 +39,27 @@ const Dashboard: React.FC = () => {
       setLoading(true);
       console.log('🔍 Fetching dashboard stats...');
       
-      // Use the same endpoint that works for Mail Merge page
-      const url = 'http://localhost:5000/api/templates';
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const url = `${apiUrl}/api/templates`;
       console.log('🔍 Making request to:', url);
       console.log('🔍 Full URL would be:', url);
       
-      const response = await fetch(url, {
-        credentials: 'include'
-      });
+      const response = await axios.get(url, { withCredentials: true });
       
       console.log('🔍 Response status:', response.status);
       console.log('🔍 Response headers:', Object.fromEntries(response.headers.entries()));
       
-      if (response.ok) {
-        const templates = await response.json();
+      if (response.status === 200) {
+        const templates = response.data;
         console.log('🔍 Templates response:', templates);
         console.log('🔍 Template count:', templates.length);
         
         // Get email stats separately
-        const emailResponse = await fetch('/api/user/stats', {
-          credentials: 'include'
-        });
+        const emailResponse = await axios.get('/api/user/stats', { withCredentials: true });
         
         let emailStats = { sent_emails: 0 };
-        if (emailResponse.ok) {
-          emailStats = await emailResponse.json();
+        if (emailResponse.status === 200) {
+          emailStats = emailResponse.data;
           console.log('🔍 Email stats response:', emailStats);
         }
         
@@ -80,7 +77,7 @@ const Dashboard: React.FC = () => {
         
         // Get the actual response to see what's being returned
         try {
-          const responseText = await response.text();
+          const responseText = response.data;
           console.error('🔍 Response text (first 200 chars):', responseText.substring(0, 200));
           
           if (responseText.includes('<!DOCTYPE')) {
