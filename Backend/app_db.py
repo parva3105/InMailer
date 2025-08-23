@@ -14,6 +14,7 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 import requests
+import stripe
 
 # Import database modules
 from db.config import init_db
@@ -29,6 +30,16 @@ load_dotenv()
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5000/auth/google/callback')
+
+# Stripe Configuration
+STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
+STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY')
+STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
+LIFETIME_PRICE_ID = os.getenv('STRIPE_LIFETIME_PRICE_ID')  # Create this in Stripe dashboard
+
+# Initialize Stripe
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
 
 # User limit configuration
 MAX_FREE_USERS = int(os.getenv('MAX_FREE_USERS', '50'))
@@ -1816,15 +1827,16 @@ def google_callback():
         existing_user = UserService.get_user_by_email(user_email)
         
         if not existing_user:
-            # Check if we've reached the user limit
+            # Check if we've reached the user limit (only for non-paying users)
             if not UserService.is_user_registration_allowed(MAX_FREE_USERS):
                 current_count = UserService.get_total_user_count()
                 print(f"❌ User limit reached! Current users: {current_count}, Max allowed: {MAX_FREE_USERS}")
                 return jsonify({
-                    'error': f'Sorry! We have reached our limit of {MAX_FREE_USERS} free users. Please contact us for premium access.',
+                    'error': f'Sorry! We have reached our limit of {MAX_FREE_USERS} free users. Upgrade to lifetime access for unlimited use!',
                     'user_limit_reached': True,
                     'current_users': current_count,
-                    'max_users': MAX_FREE_USERS
+                    'max_users': MAX_FREE_USERS,
+                    'upgrade_available': True
                 }), 403
             
             # Create new user from Google OAuth
@@ -1866,12 +1878,24 @@ def get_user_limit_status():
         current_count = UserService.get_total_user_count()
         is_registration_open = UserService.is_user_registration_allowed(MAX_FREE_USERS)
         
+        # Get authenticated user's payment status if available
+        user_payment_status = None
+        auth_header = request.headers.get('Authorization')
+        if auth_header and auth_header.startswith('Bearer '):
+            session_token = auth_header.split(' ')[1]
+            user = get_user_from_session(session_token)
+            if user:
+                user_payment_status = UserService.get_payment_status(user['id'])
+        
         return jsonify({
             'current_users': current_count,
             'max_users': MAX_FREE_USERS,
             'is_registration_open': is_registration_open,
             'remaining_slots': max(0, MAX_FREE_USERS - current_count),
-            'message': f"{'Open' if is_registration_open else 'Closed'} for registration - {current_count}/{MAX_FREE_USERS} users"
+            'message': f"{'Open' if is_registration_open else 'Closed'} for registration - {current_count}/{MAX_FREE_USERS} users",
+            'upgrade_available': not is_registration_open,
+            'lifetime_price': 10.00,
+            'user_payment_status': user_payment_status
         })
     except Exception as e:
         print(f"Error getting user limit status: {e}")
@@ -1905,6 +1929,176 @@ def get_all_users():
     except Exception as e:
         print(f"Error getting all users: {e}")
         return jsonify({'error': 'Failed to get users'}), 500
+
+# Payment Endpoints
+@app.route('/api/payment/create-payment-intent', methods=['POST'])
+def create_payment_intent():
+    """Create a Stripe payment intent for lifetime access"""
+    try:
+        # Check if user is authenticated
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'No authorization token'}), 401
+        
+        session_token = auth_header.split(' ')[1]
+        user = get_user_from_session(session_token)
+        
+        if not user:
+            return jsonify({'error': 'Invalid or expired session'}), 401
+        
+        # Check if user already has lifetime access
+        if UserService.has_lifetime_access(user['id']):
+            return jsonify({'error': 'User already has lifetime access'}), 400
+        
+        # Create payment intent
+        payment_intent = stripe.PaymentIntent.create(
+            amount=1000,  # $10.00 in cents
+            currency='usd',
+            metadata={
+                'user_id': user['id'],
+                'user_email': user['email'],
+                'product': 'lifetime_access'
+            },
+            description='Lifetime Access to Mail Merge Kit - $10'
+        )
+        
+        return jsonify({
+            'client_secret': payment_intent.client_secret,
+            'payment_intent_id': payment_intent.id,
+            'amount': payment_intent.amount,
+            'currency': payment_intent.currency
+        }), 200
+        
+    except Exception as e:
+        print(f"Error creating payment intent: {e}")
+        return jsonify({'error': f'Failed to create payment: {str(e)}'}), 500
+
+@app.route('/api/payment/webhook', methods=['POST'])
+def stripe_webhook():
+    """Handle Stripe webhook events"""
+    try:
+        payload = request.get_data()
+        sig_header = request.headers.get('Stripe-Signature')
+        
+        if not STRIPE_WEBHOOK_SECRET:
+            print("⚠️  STRIPE_WEBHOOK_SECRET not configured")
+            return jsonify({'error': 'Webhook secret not configured'}), 400
+        
+        try:
+            event = stripe.Webhook.construct_event(
+                payload, sig_header, STRIPE_WEBHOOK_SECRET
+            )
+        except ValueError as e:
+            print(f"❌ Invalid payload: {e}")
+            return jsonify({'error': 'Invalid payload'}), 400
+        except stripe.error.SignatureVerificationError as e:
+            print(f"❌ Invalid signature: {e}")
+            return jsonify({'error': 'Invalid signature'}), 400
+        
+        # Handle the event
+        if event['type'] == 'payment_intent.succeeded':
+            payment_intent = event['data']['object']
+            user_id = payment_intent['metadata']['user_id']
+            customer_id = payment_intent.get('customer')
+            
+            # Update user payment status
+            UserService.update_payment_status(
+                user_id=int(user_id),
+                stripe_customer_id=customer_id,
+                stripe_payment_intent_id=payment_intent['id']
+            )
+            
+            print(f"✅ Payment succeeded for user {user_id}")
+            
+        elif event['type'] == 'payment_intent.payment_failed':
+            payment_intent = event['data']['object']
+            user_id = payment_intent['metadata']['user_id']
+            print(f"❌ Payment failed for user {user_id}")
+        
+        return jsonify({'status': 'success'}), 200
+        
+    except Exception as e:
+        print(f"Error processing webhook: {e}")
+        return jsonify({'error': 'Webhook processing failed'}), 500
+
+@app.route('/api/payment/status', methods=['GET'])
+def get_payment_status():
+    """Get current user's payment status"""
+    try:
+        # Check if user is authenticated
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'No authorization token'}), 401
+        
+        session_token = auth_header.split(' ')[1]
+        user = get_user_from_session(session_token)
+        
+        if not user:
+            return jsonify({'error': 'Invalid or expired session'}), 401
+        
+        payment_status = UserService.get_payment_status(user['id'])
+        
+        return jsonify({
+            'user_id': user['id'],
+            'email': user['email'],
+            'payment_status': payment_status
+        }), 200
+        
+    except Exception as e:
+        print(f"Error getting payment status: {e}")
+        return jsonify({'error': f'Failed to get payment status: {str(e)}'}), 500
+
+@app.route('/api/payment/checkout-session', methods=['POST'])
+def create_checkout_session():
+    """Create a Stripe checkout session for lifetime access"""
+    try:
+        # Check if user is authenticated
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'No authorization token'}), 401
+        
+        session_token = auth_header.split(' ')[1]
+        user = get_user_from_session(session_token)
+        
+        if not user:
+            return jsonify({'error': 'Invalid or expired session'}), 401
+        
+        # Check if user already has lifetime access
+        if UserService.has_lifetime_access(user['id']):
+            return jsonify({'error': 'User already has lifetime access'}), 400
+        
+        # Create checkout session
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price_data': {
+                    'currency': 'usd',
+                    'product_data': {
+                        'name': 'Lifetime Access to Mail Merge Kit',
+                        'description': 'Unlimited access to all features - One-time payment of $10',
+                    },
+                    'unit_amount': 1000,  # $10.00 in cents
+                },
+                'quantity': 1,
+            }],
+            mode='payment',
+            success_url=f"{request.headers.get('Origin', 'http://localhost:3001')}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{request.headers.get('Origin', 'http://localhost:3001')}/payment/cancel",
+            metadata={
+                'user_id': user['id'],
+                'user_email': user['email'],
+                'product': 'lifetime_access'
+            }
+        )
+        
+        return jsonify({
+            'session_id': checkout_session.id,
+            'url': checkout_session.url
+        }), 200
+        
+    except Exception as e:
+        print(f"Error creating checkout session: {e}")
+        return jsonify({'error': f'Failed to create checkout session: {str(e)}'}), 500
 
 if __name__ == '__main__':
     print("🚀 Starting InMailer Backend with Database...")

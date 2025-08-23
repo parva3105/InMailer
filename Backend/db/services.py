@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, desc
+from sqlalchemy import and_, desc, func
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from .models import User, Template, EmailLog
@@ -55,19 +55,63 @@ class UserService:
         return user.password_hash == hashlib.sha256(password.encode()).hexdigest()
     
     @staticmethod
-    def update_user_google_oauth(user_id: int, new_name: str = None) -> User:
-        """Update user to mark as Google OAuth user and optionally update name"""
+    def update_user_google_oauth(user_id: int, name: str) -> User:
+        """Update existing user with Google OAuth information"""
         db = get_db_session()
         try:
             user = db.query(User).filter(User.id == user_id).first()
             if user:
+                user.name = name
                 user.is_google_user = True
-                if new_name:
-                    user.name = new_name
-                user.updated_at = datetime.now()
+                user.updated_at = func.now()
                 db.commit()
                 db.refresh(user)
             return user
+        finally:
+            db.close()
+    
+    @staticmethod
+    def update_payment_status(user_id: int, stripe_customer_id: str, stripe_payment_intent_id: str) -> User:
+        """Update user payment status after successful payment"""
+        db = get_db_session()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if user:
+                user.has_lifetime_access = True
+                user.payment_date = func.now()
+                user.stripe_customer_id = stripe_customer_id
+                user.stripe_payment_intent_id = stripe_payment_intent_id
+                user.updated_at = func.now()
+                db.commit()
+                db.refresh(user)
+            return user
+        finally:
+            db.close()
+    
+    @staticmethod
+    def has_lifetime_access(user_id: int) -> bool:
+        """Check if user has lifetime access"""
+        db = get_db_session()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            return user.has_lifetime_access if user else False
+        finally:
+            db.close()
+    
+    @staticmethod
+    def get_payment_status(user_id: int) -> dict:
+        """Get user payment status"""
+        db = get_db_session()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if user:
+                return {
+                    'has_lifetime_access': user.has_lifetime_access,
+                    'payment_date': user.payment_date.isoformat() if user.payment_date else None,
+                    'stripe_customer_id': user.stripe_customer_id,
+                    'stripe_payment_intent_id': user.stripe_payment_intent_id
+                }
+            return None
         finally:
             db.close()
     

@@ -15,6 +15,13 @@ class User(Base):
     name = Column(String(255), nullable=False)
     password_hash = Column(String(255), nullable=True)  # Null for Google OAuth users
     is_google_user = Column(Boolean, default=False)
+    
+    # Payment fields
+    has_lifetime_access = Column(Boolean, default=False)
+    payment_date = Column(DateTime, nullable=True)
+    stripe_customer_id = Column(String(255), nullable=True)
+    stripe_payment_intent_id = Column(String(255), nullable=True)
+    
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     
