@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Mail, Upload, FileText, LogOut, User, Settings } from 'lucide-react';
 import axios from 'axios';
+import { getApiUrl, apiEndpoints } from '../config';
 
 interface DashboardStats {
   template_count: number;
@@ -39,35 +40,26 @@ const Dashboard: React.FC = () => {
       setLoading(true);
       console.log('🔍 Fetching dashboard stats...');
       
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-      const url = `${apiUrl}/api/templates`;
-      console.log('🔍 Making request to:', url);
-      console.log('🔍 Full URL would be:', url);
+      const apiUrl = getApiUrl('');
       
-      const response = await axios.get(url, { withCredentials: true });
+      // Use the dedicated dashboard stats endpoint
+      const dashboardUrl = getApiUrl(apiEndpoints.dashboard);
+      console.log('🔍 Making request to dashboard stats:', dashboardUrl);
+      
+      const response = await axios.get(dashboardUrl, { withCredentials: true });
       
       console.log('🔍 Response status:', response.status);
-      console.log('🔍 Response headers:', Object.fromEntries(response.headers.entries()));
+      console.log('🔍 Response data:', response.data);
       
       if (response.status === 200) {
-        const templates = response.data;
-        console.log('🔍 Templates response:', templates);
-        console.log('🔍 Template count:', templates.length);
+        const statsData = response.data;
+        console.log('🔍 Dashboard stats received:', statsData);
         
-        // Get email stats separately
-        const emailResponse = await axios.get('/api/user/stats', { withCredentials: true });
-        
-        let emailStats = { sent_emails: 0 };
-        if (emailResponse.status === 200) {
-          emailStats = emailResponse.data;
-          console.log('🔍 Email stats response:', emailStats);
-        }
-        
-        // Update stats with template count from templates endpoint
+        // Update stats with data from dashboard endpoint
         const newStats = {
-          template_count: templates.length,
-          emails_sent: emailStats.sent_emails || 0,
-          orphaned_emails: 0 // We'll keep this as 0 for now since it's not critical
+          template_count: statsData.template_count || 0,
+          emails_sent: statsData.emails_sent || 0,
+          orphaned_emails: statsData.orphaned_emails || 0
         };
         
         console.log('🔍 Setting new stats:', newStats);
@@ -75,20 +67,59 @@ const Dashboard: React.FC = () => {
       } else {
         console.error('Failed to fetch dashboard stats, status:', response.status);
         
-        // Get the actual response to see what's being returned
+        // Fallback: try to get template count separately
         try {
-          const responseText = response.data;
-          console.error('🔍 Response text (first 200 chars):', responseText.substring(0, 200));
+          const templatesUrl = getApiUrl(apiEndpoints.templates);
+          const templatesResponse = await axios.get(templatesUrl, { withCredentials: true });
           
-          if (responseText.includes('<!DOCTYPE')) {
-            console.error('❌ Server returned HTML instead of JSON - backend server might not be running or endpoint is wrong');
+          if (templatesResponse.status === 200) {
+            const templates = templatesResponse.data;
+            console.log('🔍 Fallback: Got templates count:', templates.length);
+            
+            // Get email stats separately
+            const emailResponse = await axios.get(getApiUrl(apiEndpoints.userStats), { withCredentials: true });
+            
+            let emailStats = { sent_emails: 0 };
+            if (emailResponse.status === 200) {
+              emailStats = emailResponse.data;
+              console.log('🔍 Fallback: Email stats response:', emailStats);
+            }
+            
+            const fallbackStats = {
+              template_count: templates.length,
+              emails_sent: emailStats.sent_emails || 0,
+              orphaned_emails: 0
+            };
+            
+            console.log('🔍 Setting fallback stats:', fallbackStats);
+            setStats(fallbackStats);
           }
-        } catch (e) {
-          console.error('Could not read error response:', e);
+        } catch (fallbackError) {
+          console.error('Fallback also failed:', fallbackError);
         }
       }
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
+      
+      // Show user-friendly error message
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as any;
+        if (axiosError.response) {
+          if (axiosError.response.status === 401) {
+            console.error('User not authenticated');
+          } else if (axiosError.response.status === 404) {
+            console.error('Dashboard endpoint not found');
+          } else {
+            console.error('Server error:', axiosError.response.status);
+          }
+        } else if (axiosError.request) {
+          console.error('Network error - no response received');
+        } else {
+          console.error('Request setup error:', axiosError.message);
+        }
+      } else {
+        console.error('Unknown error occurred:', error);
+      }
     } finally {
       setLoading(false);
     }

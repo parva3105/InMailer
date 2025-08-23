@@ -504,8 +504,21 @@ def create_app():
         'http://127.0.0.1:3001',
         'https://inmailer.vercel.app'
     ],
-         allow_headers=['Content-Type', 'Authorization'],
-         methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
+         allow_headers=['Content-Type', 'Authorization', 'X-Requested-With'],
+         methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+         expose_headers=['Set-Cookie'],
+         max_age=3600)
+    
+    # Add CORS headers manually to ensure they're set
+    @app.after_request
+    def after_request(response):
+        origin = request.headers.get('Origin')
+        if origin in ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001', 'https://inmailer.vercel.app']:
+            response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+        return response
     
     # Initialize database and templates when app is created
     with app.app_context():
@@ -1604,20 +1617,52 @@ def debug_session():
 # Keep other existing routes for compatibility
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
-    email_user = os.getenv("EMAIL_USER", "NOT SET")
-    display_name = os.getenv("EMAIL_DISPLAY_NAME", "Parva")
-    from_address = f"{display_name} <{email_user}>" if display_name and email_user != "NOT SET" else email_user
-    
-    return jsonify({
-        'status': 'healthy', 
-        'email_configured': bool(os.getenv("EMAIL_USER") and os.getenv("EMAIL_PASSWORD")),
-        'email_user': email_user,
-        'email_display_name': display_name,
-        'from_address': from_address,
-        'email_host': os.getenv("EMAIL_HOST", "NOT SET"),
-        'email_port': os.getenv("EMAIL_PORT", "NOT SET")
-    })
+    """Health check endpoint to verify backend and database status"""
+    try:
+        health_status = {
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'backend': 'app_db.py',
+            'database': 'unknown'
+        }
+        
+        # Test database connection
+        try:
+            db = get_db_session()
+            db.execute("SELECT 1")
+            db.close()
+            health_status['database'] = 'connected'
+            health_status['database_url'] = os.getenv('DATABASE_URL', 'not_set')[:50] + '...' if os.getenv('DATABASE_URL') else 'not_set'
+        except Exception as db_error:
+            health_status['database'] = 'error'
+            health_status['database_error'] = str(db_error)
+            health_status['status'] = 'unhealthy'
+        
+        # Check environment variables
+        health_status['environment'] = {
+            'flask_env': os.getenv('FLASK_ENV', 'not_set'),
+            'google_client_id_set': bool(os.getenv('GOOGLE_CLIENT_ID')),
+            'frontend_url': os.getenv('FRONTEND_URL', 'not_set'),
+            'max_free_users': os.getenv('MAX_FREE_USERS', 'not_set')
+        }
+        
+        # Email configuration
+        health_status['email'] = {
+            'email_configured': bool(os.getenv("EMAIL_USER") and os.getenv("EMAIL_PASSWORD")),
+            'email_user': os.getenv("EMAIL_USER", "NOT SET"),
+            'email_host': os.getenv("EMAIL_HOST", "NOT SET"),
+            'email_port': os.getenv("EMAIL_PORT", "NOT SET")
+        }
+        
+        status_code = 200 if health_status['status'] == 'healthy' else 500
+        return jsonify(health_status), status_code
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
 
 # OAuth Helper Functions
 def create_flow():
