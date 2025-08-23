@@ -301,58 +301,12 @@ const MailMerge: React.FC = () => {
             <h1 className="text-3xl font-bold text-gray-900">InMailer</h1>
           </div>
           
-          {/* Credential Status Check */}
-          <div className="flex gap-3">
-            <button
-              onClick={checkCredentialStatus}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-            >
-              Check Gmail Status
-            </button>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
-            >
-              Sign Out
-            </button>
-          </div>
+
         </div>
 
-        {/* Sender Name Information */}
-        <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0">
-              <svg className="w-5 h-5 text-green-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 0 00-1-1H9z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-medium text-green-800">How Sender Name Works</h3>
-              <p className="text-sm text-green-700 mt-1">
-                Your emails will show your name from the database as the sender, but they are sent from your authenticated Gmail account. 
-                This is a Gmail API limitation - the actual sending account cannot be changed, only the display name.
-              </p>
-            </div>
-          </div>
-        </div>
 
-        {/* Troubleshooting Information */}
-        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0">
-              <svg className="w-5 h-5 text-blue-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-medium text-blue-800">Troubleshooting Gmail Access</h3>
-              <p className="text-sm text-blue-700 mt-1">
-                If you encounter "Missing Gmail credentials" errors, this usually means your OAuth session has expired. 
-                <strong>Solution:</strong> Sign out completely and sign in again with Google. This will refresh your Gmail access tokens.
-              </p>
-            </div>
-          </div>
-        </div>
+
+
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Left Column - Upload & Template Selection */}
