@@ -10,6 +10,7 @@ import TemplateCreator from './pages/TemplateCreator';
 import MailMerge from './pages/MailMerge';
 import TestEmail from './pages/TestEmail';
 import AuthSuccess from './pages/AuthSuccess';
+import { Analytics } from "@vercel/analytics/react"
 
 function App() {
   return (
@@ -46,6 +47,7 @@ function App() {
                 </ProtectedRoute>
               } />
             </Routes>
+            <Analytics />
           </main>
         </div>
       </Router>
