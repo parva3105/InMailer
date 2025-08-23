@@ -13,16 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Database configuration
-# In production, DATABASE_URL should always be set by the hosting platform
-DATABASE_URL = os.getenv('DATABASE_URL')
-
-if not DATABASE_URL:
-    # Only use SQLite as fallback in development
-    if os.getenv('FLASK_ENV') == 'production':
-        raise ValueError("DATABASE_URL environment variable is required in production")
-    else:
-        DATABASE_URL = 'sqlite:///./inmailer.db'
-        logger.warning("⚠️  No DATABASE_URL found, using SQLite for development")
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://neondb_owner:npg_AnXwLsk2vyc0@ep-red-block-adl3xcoi-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require')
 
 logger.info(f"🔍 Original DATABASE_URL: {DATABASE_URL[:50]}..." if len(DATABASE_URL) > 50 else f"🔍 Original DATABASE_URL: {DATABASE_URL}")
 
