@@ -1653,7 +1653,8 @@ def health_check():
         # Test database connection
         try:
             db = get_db_session()
-            db.execute("SELECT 1")
+            from sqlalchemy import text
+            db.execute(text("SELECT 1"))
             db.close()
             health_status['database'] = 'connected'
             health_status['database_url'] = os.getenv('DATABASE_URL', 'not_set')[:50] + '...' if os.getenv('DATABASE_URL') else 'not_set'

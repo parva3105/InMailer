@@ -102,7 +102,8 @@ def get_db_session() -> Session:
     try:
         db = SessionLocal()
         # Test the connection
-        db.execute("SELECT 1")
+        from sqlalchemy import text
+        db.execute(text("SELECT 1"))
         return db
     except Exception as e:
         logger.error(f"❌ Failed to get database session: {e}")
