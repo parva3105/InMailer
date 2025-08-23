@@ -136,17 +136,37 @@ class TemplateService:
     
     @staticmethod
     def delete_template(template_id: int, user_id: int) -> bool:
-        """Delete a template"""
+        """Delete a template while preserving related email logs"""
         db = get_db_session()
         try:
             template = db.query(Template).filter(
                 and_(Template.id == template_id, Template.user_id == user_id)
             ).first()
             if template:
+                # Instead of deleting email logs, set their template_id to NULL
+                # This preserves email history while allowing template deletion
+                from .models import EmailLog
+                email_logs = db.query(EmailLog).filter(
+                    and_(EmailLog.template_id == template_id, EmailLog.user_id == user_id)
+                ).all()
+                
+                for email_log in email_logs:
+                    email_log.template_id = None
+                
+                # Now delete the template
                 db.delete(template)
                 db.commit()
                 return True
             return False
+        finally:
+            db.close()
+    
+    @staticmethod
+    def count_user_templates(user_id: int) -> int:
+        """Count templates for a specific user"""
+        db = get_db_session()
+        try:
+            return db.query(Template).filter(Template.user_id == user_id).count()
         finally:
             db.close()
 
@@ -199,6 +219,41 @@ class EmailLogService:
             db.close()
     
     @staticmethod
+    def get_user_email_logs_with_template_info(user_id: int, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get email logs for a user with template information, handling deleted templates"""
+        db = get_db_session()
+        try:
+            # Get email logs with left join to templates to handle NULL template_id
+            from .models import Template
+            logs = db.query(EmailLog, Template).outerjoin(
+                Template, EmailLog.template_id == Template.id
+            ).filter(
+                EmailLog.user_id == user_id
+            ).order_by(desc(EmailLog.sent_at)).limit(limit).all()
+            
+            result = []
+            for log, template in logs:
+                log_info = {
+                    'id': log.id,
+                    'recipient_email': log.recipient_email,
+                    'subject': log.subject,
+                    'status': log.status,
+                    'error_message': log.error_message,
+                    'gmail_message_id': log.gmail_message_id,
+                    'sent_at': log.sent_at.isoformat() if log.sent_at else None,
+                    'template_info': {
+                        'id': template.id if template else None,
+                        'name': template.name if template else 'Template Deleted',
+                        'exists': template is not None
+                    }
+                }
+                result.append(log_info)
+            
+            return result
+        finally:
+            db.close()
+    
+    @staticmethod
     def get_template_email_logs(template_id: int, user_id: int) -> List[EmailLog]:
         """Get email logs for a specific template"""
         db = get_db_session()
@@ -222,25 +277,19 @@ class EmailLogService:
                 and_(EmailLog.user_id == user_id, EmailLog.status == 'failed')
             ).count()
             
-            # Get recent activity
-            recent_emails = db.query(EmailLog).filter(
-                EmailLog.user_id == user_id
-            ).order_by(desc(EmailLog.sent_at)).limit(10).all()
+            # Get template count
+            template_count = TemplateService.count_user_templates(user_id)
+            
+            # Get recent activity with template information
+            recent_emails = EmailLogService.get_user_email_logs_with_template_info(user_id, 10)
             
             return {
                 'total_emails': total_emails,
                 'sent_emails': sent_emails,
                 'failed_emails': failed_emails,
+                'template_count': template_count,
                 'success_rate': (sent_emails / total_emails * 100) if total_emails > 0 else 0,
-                'recent_emails': [
-                    {
-                        'recipient': log.recipient_email,
-                        'subject': log.subject,
-                        'status': log.status,
-                        'sent_at': log.sent_at.isoformat() if log.sent_at else None
-                    }
-                    for log in recent_emails
-                ]
+                'recent_emails': recent_emails
             }
         finally:
             db.close()

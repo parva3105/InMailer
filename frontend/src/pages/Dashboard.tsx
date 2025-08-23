@@ -1,11 +1,56 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Mail, Upload, FileText, LogOut, User, Settings } from 'lucide-react';
 
+interface DashboardStats {
+  template_count: number;
+  emails_sent: number;
+  orphaned_emails: number;
+}
+
 const Dashboard: React.FC = () => {
   const { user, signout } = useAuth();
   const navigate = useNavigate();
+  const [stats, setStats] = useState<DashboardStats>({ template_count: 0, emails_sent: 0, orphaned_emails: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (user) {
+      fetchDashboardStats();
+    }
+  }, [user]);
+
+  useEffect(() => {
+    // Refresh stats when user returns to the dashboard tab/window
+    const handleFocus = () => {
+      if (user) {
+        fetchDashboardStats();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [user]);
+
+  const fetchDashboardStats = async () => {
+    try {
+      const response = await fetch('/api/dashboard/stats', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      } else {
+        console.error('Failed to fetch dashboard stats');
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSignOut = async () => {
     await signout();
@@ -126,29 +171,82 @@ const Dashboard: React.FC = () => {
         </div>
 
         {/* Stats Section */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center">
-              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
-                <FileText className="w-5 h-5 text-blue-600" />
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center">
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Templates</p>
+                  {loading ? (
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  ) : (
+                    <p className="text-2xl font-bold text-gray-900">{stats.template_count}</p>
+                  )}
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-600">Templates</p>
-                <p className="text-2xl font-bold text-gray-900">2</p>
-              </div>
+              <button
+                onClick={fetchDashboardStats}
+                className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+              >
+                Refresh
+              </button>
             </div>
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center">
-              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
-                <Mail className="w-5 h-5 text-purple-600" />
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center">
+                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
+                  <Mail className="w-5 h-5 text-purple-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Emails Sent</p>
+                  {loading ? (
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+                  ) : (
+                    <p className="text-2xl font-bold text-gray-900">{stats.emails_sent}</p>
+                  )}
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-600">Emails Sent</p>
-                <p className="text-2xl font-bold text-gray-900">3</p>
-              </div>
+              <button
+                onClick={fetchDashboardStats}
+                className="text-purple-600 hover:text-purple-700 text-sm font-medium"
+              >
+                Refresh
+              </button>
             </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center">
+                <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center mr-3">
+                  <FileText className="w-5 h-5 text-orange-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Orphaned Emails</p>
+                  {loading ? (
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-600"></div>
+                  ) : (
+                    <p className="text-2xl font-bold text-gray-900">{stats.orphaned_emails}</p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={fetchDashboardStats}
+                className="text-orange-600 hover:text-orange-700 text-sm font-medium"
+              >
+                Refresh
+              </button>
+            </div>
+            {!loading && stats.orphaned_emails > 0 && (
+              <p className="text-xs text-orange-600 mt-2">
+                Emails sent with deleted templates
+              </p>
+            )}
           </div>
         </div>
       </main>

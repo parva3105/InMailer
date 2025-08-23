@@ -89,8 +89,15 @@ const MailMerge: React.FC = () => {
           
           console.log('Template deleted successfully');
         } else {
-          console.error('Failed to delete template');
-          alert('Failed to delete template. Please try again.');
+          // Get detailed error message from backend
+          const errorData = await response.json();
+          console.error('Failed to delete template:', errorData);
+          
+          if (errorData.details) {
+            alert(`Failed to delete template: ${errorData.error}\n\n${errorData.details}`);
+          } else {
+            alert(`Failed to delete template: ${errorData.error || 'Please try again.'}`);
+          }
         }
       } catch (error) {
         console.error('Error deleting template:', error);
@@ -203,7 +210,7 @@ const MailMerge: React.FC = () => {
       if (response.ok) {
         await response.json(); // Consume response without assigning to unused variable
         alert(`Successfully processed ${contacts.length} emails!`);
-        navigate('/');
+        navigate('/dashboard');
       } else {
         const error = await response.json();
         
@@ -293,7 +300,7 @@ const MailMerge: React.FC = () => {
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/dashboard')}
               className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />

@@ -408,7 +408,7 @@ def get_templates():
     """Get all available templates"""
     print(f"🔍 Debug: Returning {len(templates)} templates")
     for template in templates:
-        print(f"   - {template['name']} (ID: {template['id']})")
+        print(f"   - {template['name']} (ID: {template['id']}, Type: {type(template['id'])})")
     return jsonify(templates)
 
 @app.route('/api/reload-templates', methods=['POST'])
@@ -911,26 +911,68 @@ def upload_template_attachment():
 def delete_template(template_id):
     """Delete a template"""
     try:
-        # Find template
-        template = next((t for t in templates if t['id'] == template_id), None)
+        print(f"🔍 Attempting to delete template with ID: {template_id} (type: {type(template_id)})")
+        print(f"🔍 Available template IDs: {[t['id'] for t in templates]}")
+        
+        # Find template - handle both string and integer IDs
+        template = None
+        print(f"🔍 Searching through {len(templates)} templates...")
+        for t in templates:
+            print(f"   Comparing template ID '{t['id']}' (type: {type(t['id'])}) with requested ID '{template_id}' (type: {type(template_id)})")
+            if str(t['id']) == str(template_id):
+                template = t
+                print(f"✅ Found matching template!")
+                break
+        
         if not template:
+            print(f"❌ Template with ID {template_id} not found")
             return jsonify({'error': 'Template not found'}), 404
         
+        print(f"✅ Found template: {template['name']}")
+        print(f"🔍 Template list before removal: {len(templates)} templates")
+        print(f"   Template IDs: {[t['id'] for t in templates]}")
+        
         # Remove template from list
-        templates.remove(template)
+        try:
+            templates.remove(template)
+            print(f"✅ Template removed from list successfully")
+            print(f"🔍 Template list after removal: {len(templates)} templates")
+            print(f"   Template IDs: {[t['id'] for t in templates]}")
+        except ValueError as remove_error:
+            print(f"❌ Error removing template from list: {remove_error}")
+            # Try to find and remove by ID instead
+            templates[:] = [t for t in templates if str(t['id']) != str(template_id)]
+            print(f"✅ Template removed using list comprehension")
+            print(f"🔍 Template list after removal: {len(templates)} templates")
         
         # Save updated templates to file
-        save_templates_to_file()
+        try:
+            save_templates_to_file()
+            print(f"✅ Templates saved to file successfully")
+        except Exception as save_error:
+            print(f"❌ Error saving templates to file: {save_error}")
+            # Don't fail the entire operation for this
         
         # Also remove the legacy .txt file if it exists
-        template_file = templates_dir / f"{template['name'].replace(' ', '_')}.txt"
-        if template_file.exists():
-            template_file.unlink()
+        try:
+            template_file = templates_dir / f"{template['name'].replace(' ', '_')}.txt"
+            if template_file.exists():
+                template_file.unlink()
+                print(f"✅ Removed legacy .txt file: {template_file}")
+            else:
+                print(f"ℹ️  No legacy .txt file found: {template_file}")
+        except Exception as file_error:
+            print(f"⚠️  Warning: Could not remove legacy .txt file: {file_error}")
+            # Don't fail the entire operation for this
         
+        print(f"✅ Template '{template['name']}' deleted successfully")
         return jsonify({'message': 'Template deleted successfully'}), 200
         
     except Exception as e:
-        return jsonify({'error': f'Failed to delete template: {str(e)}'}), 500
+        print(f"❌ Error deleting template: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': 'Failed to delete template. Please try again.'}), 500
 
 @app.route('/api/csv-columns', methods=['POST'])
 def get_csv_columns():

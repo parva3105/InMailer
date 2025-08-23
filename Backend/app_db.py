@@ -19,6 +19,8 @@ import requests
 from db.config import init_db
 from db.services import UserService, TemplateService, EmailLogService
 from db.models import User, Template, EmailLog
+from db.config import get_db_session
+from sqlalchemy import and_
 
 # Load environment variables from .env file
 load_dotenv()
@@ -776,7 +778,21 @@ def delete_template(template_id):
         
     except Exception as e:
         print(f"❌ Error deleting template: {e}")
-        return jsonify({'error': str(e)}), 500
+        
+        # Provide more specific error messages
+        error_message = str(e)
+        if "ForeignKeyViolation" in error_message:
+            return jsonify({
+                'error': 'Cannot delete template. It has associated email logs. Please contact support if you need to delete this template.',
+                'details': 'This template has been used to send emails and cannot be deleted to preserve email history.'
+            }), 400
+        elif "IntegrityError" in error_message:
+            return jsonify({
+                'error': 'Database integrity error. Please try again or contact support.',
+                'details': 'There was an issue with the database operation.'
+            }), 500
+        else:
+            return jsonify({'error': 'Failed to delete template. Please try again.'}), 500
 
 @app.route('/api/user/stats', methods=['GET'])
 def get_user_stats():
@@ -800,6 +816,47 @@ def get_user_stats():
         
     except Exception as e:
         print(f"❌ Error getting user stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/dashboard/stats', methods=['GET'])
+def get_dashboard_stats():
+    """Get dashboard statistics for the authenticated user"""
+    try:
+        # Get user from session
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = user_info.get('email')
+        user = UserService.get_user_by_email(user_email)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Get template count
+        template_count = TemplateService.count_user_templates(user.id)
+        
+        # Get email count (only sent emails)
+        sent_emails = EmailLogService.get_user_stats(user.id)
+        
+        # Count orphaned email logs (emails with deleted templates)
+        from db.models import EmailLog
+        db = get_db_session()
+        try:
+            orphaned_emails = db.query(EmailLog).filter(
+                and_(EmailLog.user_id == user.id, EmailLog.template_id.is_(None))
+            ).count()
+        finally:
+            db.close()
+        
+        return jsonify({
+            'template_count': template_count,
+            'emails_sent': sent_emails.get('sent_emails', 0),
+            'orphaned_emails': orphaned_emails
+        })
+        
+    except Exception as e:
+        print(f"❌ Error getting dashboard stats: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/template-attachment', methods=['POST'])
@@ -1265,48 +1322,220 @@ def debug_credentials():
         print(f"❌ Error debugging credentials: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/user/gmail-setup', methods=['GET'])
-def get_gmail_setup_instructions():
-    """Get instructions for setting up Gmail display name"""
+@app.route('/auth/user')
+def get_user():
+    """Get current authenticated user information"""
+    print(f"🔍 /auth/user endpoint called")
+    print(f"🔍 Request origin: {request.headers.get('Origin')}")
+    print(f"🔍 Request cookies: {dict(request.cookies)}")
+    print(f"🔍 Session contents: {list(session.keys())}")
+    print(f"🔍 User info in session: {session.get('user_info')}")
+    print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
+    
+    user_info = session.get('user_info')
+    if not user_info:
+        print(f"❌ No user_info in session")
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    print(f"✅ User authenticated: {user_info.get('email')}")
+    return jsonify({
+        'id': user_info.get('id'),
+        'email': user_info.get('email'),
+        'name': user_info.get('name'),
+        'picture': user_info.get('picture')
+    })
+
+@app.route('/auth/logout')
+def logout():
+    """Logout user and clear session"""
     try:
-        # Get user from session
+        # Get user info before clearing for logging
+        user_email = session.get('user_info', {}).get('email', 'Unknown')
+        print(f"🔍 Logging out user: {user_email}")
+        
+        # Clear all session data
+        session.clear()
+        
+        print(f"✅ Session cleared for user: {user_email}")
+        return jsonify({
+            'message': 'Logged out successfully',
+            'user': user_email,
+            'note': 'All session data and OAuth tokens have been cleared. You will need to sign in again to use Gmail features.'
+        })
+    except Exception as e:
+        print(f"❌ Error during logout: {e}")
+        # Still try to clear session even if there's an error
+        session.clear()
+        return jsonify({'message': 'Logged out (with errors)', 'error': str(e)}), 500
+
+@app.route('/auth/force-reauth')
+def force_reauth():
+    """Force user to re-authenticate by clearing credentials and redirecting to OAuth"""
+    try:
+        user_email = session.get('user_info', {}).get('email', 'Unknown')
+        print(f"🔍 Force re-authentication for user: {user_email}")
+        
+        # Clear only credentials, keep user info for the OAuth flow
+        if 'credentials' in session:
+            del session['credentials']
+            print(f"✅ Credentials cleared for user: {user_email}")
+        
+        # Redirect to OAuth flow
+        return redirect('/auth/google')
+        
+    except Exception as e:
+        print(f"❌ Error during force re-auth: {e}")
+        return jsonify({'error': 'Failed to force re-authentication'}), 500
+
+@app.route('/auth/validate-credentials')
+def validate_credentials():
+    """Validate if current Gmail credentials are still valid"""
+    try:
         user_info = session.get('user_info')
         if not user_info:
             return jsonify({'error': 'Not authenticated'}), 401
         
-        user_email = user_info.get('email')
-        user = UserService.get_user_by_email(user_email)
+        credentials_data = session.get('credentials')
+        if not credentials_data:
+            return jsonify({
+                'valid': False,
+                'error': 'No credentials found',
+                'action': 'sign_in_required'
+            }), 200
         
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
+        # Check if all required fields are present
+        required_fields = ['token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']
+        missing_fields = [field for field in required_fields if not credentials_data.get(field)]
         
-        instructions = {
-            'message': 'Gmail Display Name Setup Instructions',
-            'user_name': user.name,
-            'user_email': user.email,
-            'current_issue': f'Currently emails show as "{user.email}" instead of "{user.name}"',
-            'solution': 'Set your Gmail display name to show your name instead of email address',
-            'steps': [
-                '1. Go to Gmail (gmail.com)',
-                '2. Click the gear icon (Settings) in the top right',
-                '3. Click "See all settings"',
-                '4. Go to "General" tab',
-                '5. Find "Send mail as" section',
-                '6. Click "Edit info" next to your email address',
-                '7. Set "Name" field to your desired display name',
-                '8. Click "Save Changes"',
-                '9. Wait a few minutes for changes to take effect'
-            ],
-            'note': 'After setting this, your emails will show as "Your Name <email@gmail.com>" instead of just the email address'
-        }
+        if missing_fields:
+            return jsonify({
+                'valid': False,
+                'error': f'Missing credential fields: {missing_fields}',
+                'action': 'reauth_required',
+                'missing_fields': missing_fields
+            }), 200
         
-        return jsonify(instructions)
-        
+        # Try to recreate credentials object
+        try:
+            from google.oauth2.credentials import Credentials
+            credentials = Credentials(
+                token=credentials_data['token'],
+                refresh_token=credentials_data['refresh_token'],
+                token_uri=credentials_data['token_uri'],
+                client_id=credentials_data['client_id'],
+                client_secret=credentials_data['client_secret'],
+                scopes=credentials_data['scopes']
+            )
+            
+            # Test if credentials work by making a simple Gmail API call
+            from googleapiclient.discovery import build
+            service = build('gmail', 'v1', credentials=credentials)
+            
+            # Try to get user profile (lightweight call)
+            profile = service.users().getProfile(userId='me').execute()
+            
+            return jsonify({
+                'valid': True,
+                'user_email': profile.get('emailAddress'),
+                'message': 'Credentials are valid and working'
+            })
+            
+        except Exception as e:
+            return jsonify({
+                'valid': False,
+                'error': f'Credentials validation failed: {str(e)}',
+                'action': 'reauth_required'
+            }), 200
+            
     except Exception as e:
-        print(f"❌ Error getting Gmail setup instructions: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({
+            'valid': False,
+            'error': f'Validation error: {str(e)}',
+            'action': 'unknown_error'
+        }), 500
 
-# Keep existing OAuth and authentication routes
+@app.route('/auth/debug-session')
+def debug_session():
+    """Debug endpoint to check session state"""
+    print(f"🔍 === SESSION DEBUG ENDPOINT ===")
+    print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
+    print(f"🔍 Session keys: {list(session.keys())}")
+    print(f"🔍 User info: {session.get('user_info')}")
+    print(f"🔍 Credentials: {session.get('credentials')}")
+    print(f"🔍 Request cookies: {dict(request.cookies)}")
+    print(f"🔍 Request origin: {request.headers.get('Origin')}")
+    print(f"🔍 ==============================")
+    
+    credentials_data = session.get('credentials', {})
+    required_fields = ['token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']
+    missing_fields = [field for field in required_fields if not credentials_data.get(field)]
+    
+    return jsonify({
+        'session_id': session.get('_id'),
+        'session_keys': list(session.keys()),
+        'user_info': session.get('user_info'),
+        'has_credentials': bool(credentials_data),
+        'credentials_keys': list(credentials_data.keys()) if credentials_data else [],
+        'missing_credential_fields': missing_fields,
+        'has_refresh_token': bool(credentials_data.get('refresh_token')),
+        'credential_status': 'complete' if not missing_fields else 'incomplete',
+        'cookies': dict(request.cookies),
+        'origin': request.headers.get('Origin'),
+        'recommendations': {
+            'action_needed': 'reauth' if missing_fields else 'none',
+            'message': 'Credentials are incomplete. Please sign in again.' if missing_fields else 'Credentials look complete.'
+        }
+    })
+
+# Keep other existing routes for compatibility
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    email_user = os.getenv("EMAIL_USER", "NOT SET")
+    display_name = os.getenv("EMAIL_DISPLAY_NAME", "Parva")
+    from_address = f"{display_name} <{email_user}>" if display_name and email_user != "NOT SET" else email_user
+    
+    return jsonify({
+        'status': 'healthy', 
+        'email_configured': bool(os.getenv("EMAIL_USER") and os.getenv("EMAIL_PASSWORD")),
+        'email_user': email_user,
+        'email_display_name': display_name,
+        'from_address': from_address,
+        'email_host': os.getenv("EMAIL_HOST", "NOT SET"),
+        'email_port': os.getenv("EMAIL_PORT", "NOT SET")
+    })
+
+# OAuth Helper Functions
+def create_flow():
+    """Create OAuth flow for Google authentication"""
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise ValueError("Google OAuth credentials not configured")
+    
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [GOOGLE_REDIRECT_URI]
+            }
+        },
+        scopes=SCOPES
+    )
+    return flow
+
+def get_user_info(credentials):
+    """Get user information from Google"""
+    try:
+        service = build('oauth2', 'v2', credentials=credentials)
+        user_info = service.userinfo().get().execute()
+        return user_info
+    except Exception as e:
+        print(f"Error getting user info: {e}")
+        return None
+
+# OAuth Routes
 @app.route('/auth/google')
 def google_auth():
     """Initiate Google OAuth flow"""
@@ -1508,189 +1737,6 @@ def google_callback():
         import traceback
         traceback.print_exc()
         return jsonify({'error': 'OAuth callback failed'}), 500
-
-@app.route('/auth/user')
-def get_user():
-    """Get current authenticated user information"""
-    print(f"🔍 /auth/user endpoint called")
-    print(f"🔍 Request origin: {request.headers.get('Origin')}")
-    print(f"🔍 Request cookies: {dict(request.cookies)}")
-    print(f"🔍 Session contents: {list(session.keys())}")
-    print(f"🔍 User info in session: {session.get('user_info')}")
-    print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
-    
-    user_info = session.get('user_info')
-    if not user_info:
-        print(f"❌ No user_info in session")
-        return jsonify({'error': 'Not authenticated'}), 401
-    
-    print(f"✅ User authenticated: {user_info.get('email')}")
-    return jsonify({
-        'id': user_info.get('id'),
-        'email': user_info.get('email'),
-        'name': user_info.get('name'),
-        'picture': user_info.get('picture')
-    })
-
-@app.route('/auth/logout')
-def logout():
-    """Logout user and clear session"""
-    try:
-        # Get user info before clearing for logging
-        user_email = session.get('user_info', {}).get('email', 'Unknown')
-        print(f"🔍 Logging out user: {user_email}")
-        
-        # Clear all session data
-        session.clear()
-        
-        print(f"✅ Session cleared for user: {user_email}")
-        return jsonify({
-            'message': 'Logged out successfully',
-            'user': user_email,
-            'note': 'All session data and OAuth tokens have been cleared. You will need to sign in again to use Gmail features.'
-        })
-    except Exception as e:
-        print(f"❌ Error during logout: {e}")
-        # Still try to clear session even if there's an error
-        session.clear()
-        return jsonify({'message': 'Logged out (with errors)', 'error': str(e)}), 500
-
-@app.route('/auth/force-reauth')
-def force_reauth():
-    """Force user to re-authenticate by clearing credentials and redirecting to OAuth"""
-    try:
-        user_email = session.get('user_info', {}).get('email', 'Unknown')
-        print(f"🔍 Force re-authentication for user: {user_email}")
-        
-        # Clear only credentials, keep user info for the OAuth flow
-        if 'credentials' in session:
-            del session['credentials']
-            print(f"✅ Credentials cleared for user: {user_email}")
-        
-        # Redirect to OAuth flow
-        return redirect('/auth/google')
-        
-    except Exception as e:
-        print(f"❌ Error during force re-auth: {e}")
-        return jsonify({'error': 'Failed to force re-authentication'}), 500
-
-@app.route('/auth/validate-credentials')
-def validate_credentials():
-    """Validate if current Gmail credentials are still valid"""
-    try:
-        user_info = session.get('user_info')
-        if not user_info:
-            return jsonify({'error': 'Not authenticated'}), 401
-        
-        credentials_data = session.get('credentials')
-        if not credentials_data:
-            return jsonify({
-                'valid': False,
-                'error': 'No credentials found',
-                'action': 'sign_in_required'
-            }), 200
-        
-        # Check if all required fields are present
-        required_fields = ['token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']
-        missing_fields = [field for field in required_fields if not credentials_data.get(field)]
-        
-        if missing_fields:
-            return jsonify({
-                'valid': False,
-                'error': f'Missing credential fields: {missing_fields}',
-                'action': 'reauth_required',
-                'missing_fields': missing_fields
-            }), 200
-        
-        # Try to recreate credentials object
-        try:
-            from google.oauth2.credentials import Credentials
-            credentials = Credentials(
-                token=credentials_data['token'],
-                refresh_token=credentials_data['refresh_token'],
-                token_uri=credentials_data['token_uri'],
-                client_id=credentials_data['client_id'],
-                client_secret=credentials_data['client_secret'],
-                scopes=credentials_data['scopes']
-            )
-            
-            # Test if credentials work by making a simple Gmail API call
-            from googleapiclient.discovery import build
-            service = build('gmail', 'v1', credentials=credentials)
-            
-            # Try to get user profile (lightweight call)
-            profile = service.users().getProfile(userId='me').execute()
-            
-            return jsonify({
-                'valid': True,
-                'user_email': profile.get('emailAddress'),
-                'message': 'Credentials are valid and working'
-            })
-            
-        except Exception as e:
-            return jsonify({
-                'valid': False,
-                'error': f'Credentials validation failed: {str(e)}',
-                'action': 'reauth_required'
-            }), 200
-            
-    except Exception as e:
-        return jsonify({
-            'valid': False,
-            'error': f'Validation error: {str(e)}',
-            'action': 'unknown_error'
-        }), 500
-
-@app.route('/auth/debug-session')
-def debug_session():
-    """Debug endpoint to check session state"""
-    print(f"🔍 === SESSION DEBUG ENDPOINT ===")
-    print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
-    print(f"🔍 Session keys: {list(session.keys())}")
-    print(f"🔍 User info: {session.get('user_info')}")
-    print(f"🔍 Credentials: {session.get('credentials')}")
-    print(f"🔍 Request cookies: {dict(request.cookies)}")
-    print(f"🔍 Request origin: {request.headers.get('Origin')}")
-    print(f"🔍 ==============================")
-    
-    credentials_data = session.get('credentials', {})
-    required_fields = ['token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']
-    missing_fields = [field for field in required_fields if not credentials_data.get(field)]
-    
-    return jsonify({
-        'session_id': session.get('_id'),
-        'session_keys': list(session.keys()),
-        'user_info': session.get('user_info'),
-        'has_credentials': bool(credentials_data),
-        'credentials_keys': list(credentials_data.keys()) if credentials_data else [],
-        'missing_credential_fields': missing_fields,
-        'has_refresh_token': bool(credentials_data.get('refresh_token')),
-        'credential_status': 'complete' if not missing_fields else 'incomplete',
-        'cookies': dict(request.cookies),
-        'origin': request.headers.get('Origin'),
-        'recommendations': {
-            'action_needed': 'reauth' if missing_fields else 'none',
-            'message': 'Credentials are incomplete. Please sign in again.' if missing_fields else 'Credentials look complete.'
-        }
-    })
-
-# Keep other existing routes for compatibility
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    email_user = os.getenv("EMAIL_USER", "NOT SET")
-    display_name = os.getenv("EMAIL_DISPLAY_NAME", "Parva")
-    from_address = f"{display_name} <{email_user}>" if display_name and email_user != "NOT SET" else email_user
-    
-    return jsonify({
-        'status': 'healthy', 
-        'email_configured': bool(os.getenv("EMAIL_USER") and os.getenv("EMAIL_PASSWORD")),
-        'email_user': email_user,
-        'email_display_name': display_name,
-        'from_address': from_address,
-        'email_host': os.getenv("EMAIL_HOST", "NOT SET"),
-        'email_port': os.getenv("EMAIL_PORT", "NOT SET")
-    })
 
 if __name__ == '__main__':
     print("🚀 Starting InMailer Backend with Database...")

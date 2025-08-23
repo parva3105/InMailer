@@ -32,19 +32,20 @@ class Template(Base):
     content = Column(Text, nullable=False)
     variables = Column(JSON, default=list)  # Store as JSON array
     attachment_path = Column(String(500), nullable=True)
-    attachment_name = Column(String(255), nullable=True)
+    attachment_name = Column(String(500), nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     
     # Relationships
     user = relationship("User", back_populates="templates")
+    email_logs = relationship("EmailLog", back_populates="template")
 
 class EmailLog(Base):
     __tablename__ = 'email_logs'
     
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
-    template_id = Column(Integer, ForeignKey('templates.id'), nullable=False, index=True)
+    template_id = Column(Integer, ForeignKey('templates.id'), nullable=True, index=True)  # Made nullable
     recipient_email = Column(String(255), nullable=False)
     subject = Column(Text, nullable=False)
     status = Column(String(50), nullable=False)  # sent, failed, pending
@@ -54,4 +55,4 @@ class EmailLog(Base):
     
     # Relationships
     user = relationship("User", back_populates="email_logs")
-    template = relationship("Template")
+    template = relationship("Template", back_populates="email_logs")
