@@ -1827,16 +1827,17 @@ def google_callback():
         existing_user = UserService.get_user_by_email(user_email)
         
         if not existing_user:
-            # Check if we've reached the user limit (only for non-paying users)
+            # Check if we've reached the user limit
             if not UserService.is_user_registration_allowed(MAX_FREE_USERS):
                 current_count = UserService.get_total_user_count()
                 print(f"❌ User limit reached! Current users: {current_count}, Max allowed: {MAX_FREE_USERS}")
                 return jsonify({
-                    'error': f'Sorry! We have reached our limit of {MAX_FREE_USERS} free users. Upgrade to lifetime access for unlimited use!',
+                    'error': f'Sorry! We have reached our limit of {MAX_FREE_USERS} free users. Please upgrade to lifetime access for $10.',
                     'user_limit_reached': True,
                     'current_users': current_count,
                     'max_users': MAX_FREE_USERS,
-                    'upgrade_available': True
+                    'upgrade_available': True,
+                    'lifetime_price': 10.00
                 }), 403
             
             # Create new user from Google OAuth
@@ -2099,6 +2100,59 @@ def create_checkout_session():
     except Exception as e:
         print(f"Error creating checkout session: {e}")
         return jsonify({'error': f'Failed to create checkout session: {str(e)}'}), 500
+
+@app.route('/api/user/access-status', methods=['GET'])
+def get_user_access_status():
+    """Check if current user has access to the application"""
+    try:
+        # Check if user is authenticated
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'No authorization token'}), 401
+        
+        session_token = auth_header.split(' ')[1]
+        user = get_user_from_session(session_token)
+        
+        if not user:
+            return jsonify({'error': 'Invalid or expired session'}), 401
+        
+        # Check if user has lifetime access
+        has_lifetime = UserService.has_lifetime_access(user['id'])
+        
+        # Check if user is within free tier (first 50 users)
+        current_count = UserService.get_total_user_count()
+        is_within_free_tier = user['id'] <= MAX_FREE_USERS
+        
+        # Determine access level
+        if has_lifetime:
+            access_level = 'lifetime'
+            can_access = True
+            message = 'Full lifetime access granted'
+        elif is_within_free_tier:
+            access_level = 'free_tier'
+            can_access = True
+            message = f'Free tier access (User #{user["id"]} of {MAX_FREE_USERS})'
+        else:
+            access_level = 'payment_required'
+            can_access = False
+            message = 'Payment required for access'
+        
+        return jsonify({
+            'user_id': user['id'],
+            'email': user['email'],
+            'access_level': access_level,
+            'can_access': can_access,
+            'message': message,
+            'has_lifetime_access': has_lifetime,
+            'is_within_free_tier': is_within_free_tier,
+            'current_user_count': current_count,
+            'max_free_users': MAX_FREE_USERS,
+            'lifetime_price': 10.00
+        }), 200
+        
+    except Exception as e:
+        print(f"Error getting user access status: {e}")
+        return jsonify({'error': f'Failed to get access status: {str(e)}'}), 500
 
 if __name__ == '__main__':
     print("🚀 Starting InMailer Backend with Database...")

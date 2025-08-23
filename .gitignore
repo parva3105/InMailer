@@ -41,3 +41,4 @@ clean_database.py
 test_oauth.py
 start_server.py
 check_user_limit.py
+test_payment_flow.py
