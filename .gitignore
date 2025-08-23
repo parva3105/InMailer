@@ -1,8 +1,59 @@
-# Environment variables
+# Environment variables and secrets - BLOCK ALL OF THESE
 .env
 .env.local
 .env.production
 .env.development
+.env.staging
+.env.test
+.env.*
+env*.txt
+env*.local
+env*.production
+env*.development
+env*.staging
+env*.test
+
+# Backend environment files
+Backend/env*.txt
+Backend/env*.local
+Backend/env*.production
+Backend/env*.development
+Backend/.env*
+Backend/env.production.ready
+
+# Frontend environment files
+frontend/env*.txt
+frontend/env*.local
+frontend/env*.production
+frontend/env*.development
+frontend/.env*
+frontend/env.production.ready
+
+# Any environment files in subdirectories
+**/env*.txt
+**/env*.local
+**/env*.production
+**/env*.development
+**/.env*
+
+# Configuration files that might contain secrets
+config.json
+config.local.json
+config.production.json
+secrets.json
+credentials.json
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Database files (local development)
+*.db
+*.sqlite
+*.sqlite3
+Backend/*.db
+Backend/*.sqlite
+Backend/*.sqlite3
 
 # Data files
 *.csv
@@ -11,9 +62,6 @@
 *.pdf
 # Resume/ folder - Keep this folder structure but ignore PDF contents
 Resume/*.pdf
-
-# Template files
-*.txt
 
 # Python cache
 __pycache__/
@@ -39,6 +87,7 @@ Thumbs.db
 # *.log - No longer generated, using logs/ directory instead
 # results.csv - No longer generated, replaced by logs/email_log.csv
 
+# Test and utility files
 test_db.py
 clean_database.py
 test_oauth.py
@@ -46,3 +95,9 @@ start_server.py
 test_payment_flow.py
 clean_database.py
 check_user_limit.py
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
