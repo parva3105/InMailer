@@ -1,5 +1,8 @@
 # Environment variables
 .env
+.env.local
+.env.production
+.env.development
 
 # Data files
 *.csv
@@ -35,3 +38,8 @@ Thumbs.db
 # Log files
 # *.log - No longer generated, using logs/ directory instead
 # results.csv - No longer generated, replaced by logs/email_log.csv
+
+test_db.py
+test_payment_flow.py
+clean_database.py
+check_user_limit.py

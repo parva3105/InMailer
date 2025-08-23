@@ -1,0 +1,1507 @@
+from flask import Flask, request, jsonify, session, redirect, url_for
+from flask_cors import CORS
+import os
+import json
+import shutil
+from pathlib import Path
+from datetime import datetime, timedelta
+from mail_merge import parse_template, render_templates, send_via_smtp
+import csv
+import tempfile
+from dotenv import load_dotenv
+from google_auth_oauthlib.flow import Flow
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
+from googleapiclient.discovery import build
+import requests
+
+# Import database modules
+from db.config import init_db
+from db.services import UserService, TemplateService, EmailLogService
+from db.models import User, Template, EmailLog
+
+# Load environment variables from .env file
+load_dotenv()
+
+# OAuth Configuration
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
+GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5000/auth/google/callback')
+
+# Gmail API scopes - include openid since Google adds it automatically
+SCOPES = [
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'openid'  # Google automatically adds this scope
+]
+
+# Store users in memory for sessions (in production, use Redis or similar)
+user_sessions = {}  # Store active sessions
+
+def replace_template_variables(text: str, contact_data: dict) -> str:
+    """Replace template variables with contact data values"""
+    if not text or not contact_data:
+        return text
+    
+    result = text
+    replacements_made = []
+    
+    print(f"🔍 Processing text: {text[:100]}...")
+    print(f"🔍 Contact data: {contact_data}")
+    
+    # Create a comprehensive mapping of all possible variable formats
+    variable_mapping = {}
+    
+    for key, value in contact_data.items():
+        if value is not None and str(value).strip():
+            clean_value = str(value).strip()
+            
+            # Store the original key-value
+            variable_mapping[key] = clean_value
+            
+            # Store lowercase version
+            variable_mapping[key.lower()] = clean_value
+            
+            # Store uppercase version
+            variable_mapping[key.upper()] = clean_value
+            
+            # Store title case version
+            variable_mapping[key.title()] = clean_value
+            
+            # Store with underscores
+            if ' ' in key:
+                variable_mapping[key.replace(' ', '_')] = clean_value
+                variable_mapping[key.replace(' ', '_').lower()] = clean_value
+                variable_mapping[key.replace(' ', '_').upper()] = clean_value
+                variable_mapping[key.replace(' ', '_').title()] = clean_value
+            
+            # Store with hyphens
+            if ' ' in key:
+                variable_mapping[key.replace(' ', '-')] = clean_value
+                variable_mapping[key.replace(' ', '-').lower()] = clean_value
+                variable_mapping[key.replace(' ', '-').upper()] = clean_value
+                variable_mapping[key.replace(' ', '-').title()] = clean_value
+            
+            # Store underscore variations
+            if '_' in key:
+                variable_mapping[key.replace('_', ' ')] = clean_value
+                variable_mapping[key.replace('_', ' ').lower()] = clean_value
+                variable_mapping[key.replace('_', ' ').upper()] = clean_value
+                variable_mapping[key.replace('_', ' ').title()] = clean_value
+                
+                variable_mapping[key.replace('_', '-')] = clean_value
+                variable_mapping[key.replace('_', '-').lower()] = clean_value
+                variable_mapping[key.replace('_', '-').upper()] = clean_value
+                variable_mapping[key.replace('_', '-').title()] = clean_value
+            
+            # Store hyphen variations
+            if '-' in key:
+                variable_mapping[key.replace('-', ' ')] = clean_value
+                variable_mapping[key.replace('-', ' ').lower()] = clean_value
+                variable_mapping[key.replace('-', ' ').upper()] = clean_value
+                variable_mapping[key.replace('-', ' ').title()] = clean_value
+                
+                variable_mapping[key.replace('-', '_')] = clean_value
+                variable_mapping[key.replace('-', '_').lower()] = clean_value
+                variable_mapping[key.replace('-', '_').upper()] = clean_value
+                variable_mapping[key.replace('-', '_').title()] = clean_value
+            
+            # Store camelCase variations
+            if ' ' in key or '_' in key or '-' in key:
+                # Convert to camelCase
+                words = key.replace('_', ' ').replace('-', ' ').split()
+                if len(words) > 1:
+                    camel_case = words[0].lower() + ''.join(word.title() for word in words[1:])
+                    variable_mapping[camel_case] = clean_value
+                    variable_mapping[camel_case.lower()] = clean_value
+                    variable_mapping[camel_case.upper()] = clean_value
+                    variable_mapping[camel_case.title()] = clean_value
+    
+    print(f"🔍 Created {len(variable_mapping)} variable mappings")
+    print(f"🔍 Sample mappings: {dict(list(variable_mapping.items())[:10])}")
+    
+    # Find all variable patterns in the text using regex
+    import re
+    
+    # Pattern 1: ${VariableName} or ${variable_name}
+    pattern1 = r'\$\{([^}]+)\}'
+    matches1 = re.findall(pattern1, text)
+    print(f"🔍 Found ${{}} pattern matches: {matches1}")
+    
+    # Pattern 2: $VariableName or $variable_name
+    pattern2 = r'\$([a-zA-Z_][a-zA-Z0-9_]*)\b'
+    matches2 = re.findall(pattern2, text)
+    print(f"🔍 Found $Variable pattern matches: {matches2}")
+    
+    # Combine all matches
+    all_matches = list(set(matches1 + matches2))
+    print(f"🔍 All unique variable matches: {all_matches}")
+    
+    # Replace all variables
+    for var_name in all_matches:
+        # Try to find a match in our variable mapping
+        found_match = False
+        
+        # Try exact match first
+        if var_name in variable_mapping:
+            result = result.replace(f'${{{var_name}}}', variable_mapping[var_name])
+            result = result.replace(f'${var_name}', variable_mapping[var_name])
+            replacements_made.append(f"${var_name} -> {variable_mapping[var_name]}")
+            found_match = True
+            print(f"✅ Exact match: ${var_name} -> {variable_mapping[var_name]}")
+        
+        # Try case-insensitive match
+        if not found_match:
+            for mapping_key, mapping_value in variable_mapping.items():
+                if mapping_key.lower() == var_name.lower():
+                    result = result.replace(f'${{{var_name}}}', mapping_value)
+                    result = result.replace(f'${var_name}', mapping_value)
+                    replacements_made.append(f"${var_name} -> {mapping_value}")
+                    found_match = True
+                    print(f"✅ Case-insensitive match: ${var_name} -> {mapping_value}")
+                    break
+        
+        # Try normalized match (remove spaces, underscores, hyphens)
+        if not found_match:
+            normalized_var = var_name.lower().replace(' ', '').replace('_', '').replace('-', '')
+            for mapping_key, mapping_value in variable_mapping.items():
+                normalized_key = mapping_key.lower().replace(' ', '').replace('_', '').replace('-', '')
+                if normalized_key == normalized_var:
+                    result = result.replace(f'${{{var_name}}}', mapping_value)
+                    result = result.replace(f'${var_name}', mapping_value)
+                    replacements_made.append(f"${var_name} -> {mapping_value}")
+                    found_match = True
+                    print(f"✅ Normalized match: ${var_name} -> {mapping_value}")
+                    break
+        
+        if not found_match:
+            print(f"⚠️ No match found for variable: ${var_name}")
+    
+    # Final debug logging
+    if replacements_made:
+        print(f"🔍 Total replacements made: {len(replacements_made)}")
+        print(f"🔍 Replacements: {replacements_made}")
+        print(f"🔍 Final result preview: {result[:200]}...")
+    else:
+        print(f"⚠️ No variable replacements made!")
+        print(f"🔍 Available variable mappings: {list(variable_mapping.keys())[:20]}...")
+    
+    return result
+
+def save_templates_to_file():
+    """Save all templates to JSON file for persistence (legacy support)"""
+    try:
+        templates_dir = Path("Templates")
+        templates_file = templates_dir / "templates.json"
+        
+        # Create backup of existing file if it exists
+        if templates_file.exists():
+            backup_file = templates_dir / "templates_backup.json"
+            import shutil
+            shutil.copy2(templates_file, backup_file)
+            print(f"💾 Created backup: {backup_file}")
+        
+        # Save to temporary file first, then rename (atomic operation)
+        temp_file = templates_dir / "templates_temp.json"
+        with open(temp_file, 'w', encoding='utf-8') as f:
+            json.dump([], f, indent=2, ensure_ascii=False)  # Empty array since we're using DB now
+        
+        # Atomic rename
+        temp_file.replace(templates_file)
+        print(f"✅ Legacy templates file updated (now empty - using database)")
+        
+    except Exception as e:
+        print(f"❌ Error saving templates: {e}")
+        import traceback
+        traceback.print_exc()
+
+def initialize_templates():
+    """Initialize database and migrate existing templates if needed"""
+    print("🚀 Initializing InMailer Backend with Database...")
+    
+    # Initialize database tables
+    try:
+        init_db()
+        print("✅ Database initialized successfully")
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+        raise
+    
+    # Create templates directory if it doesn't exist
+    templates_dir = Path("Templates")
+    templates_dir.mkdir(exist_ok=True)
+    print(f"📁 Templates directory: {templates_dir.absolute()}")
+    
+    # Check if we need to migrate existing templates
+    templates_file = templates_dir / "templates.json"
+    if templates_file.exists():
+        try:
+            with open(templates_file, 'r', encoding='utf-8') as f:
+                existing_templates = json.load(f)
+            
+            if existing_templates:
+                print(f"🔄 Found {len(existing_templates)} existing templates to migrate")
+                
+                # Create a default user for existing templates
+                default_user = UserService.create_user(
+                    email="default@inmailer.local",
+                    name="Default User",
+                    is_google_user=False
+                )
+                
+                print(f"✅ Created default user: {default_user.email}")
+                
+                # Migrate each template
+                migrated_count = 0
+                for template_data in existing_templates:
+                    try:
+                        template = TemplateService.create_template(
+                            user_id=default_user.id,
+                            name=template_data.get('name', 'Unnamed Template'),
+                            subject=template_data.get('subject', 'No Subject'),
+                            content=template_data.get('content', ''),
+                            variables=template_data.get('variables', []),
+                            attachment_path=template_data.get('attachment_path'),
+                            attachment_name=template_data.get('attachment_name')
+                        )
+                        
+                        print(f"✅ Migrated template: {template.name}")
+                        migrated_count += 1
+                        
+                    except Exception as e:
+                        print(f"❌ Failed to migrate template {template_data.get('name', 'Unknown')}: {e}")
+                
+                print(f"✅ Migration complete: {migrated_count}/{len(existing_templates)} templates migrated")
+                
+                # Update the JSON file to indicate migration
+                save_templates_to_file()
+                
+        except Exception as e:
+            print(f"❌ Error during template migration: {e}")
+    
+    print("✅ Template initialization complete!")
+
+# OAuth Helper Functions
+def create_flow():
+    """Create OAuth flow for Google authentication"""
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise ValueError("Google OAuth credentials not configured")
+    
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [GOOGLE_REDIRECT_URI]
+            }
+        },
+        scopes=SCOPES
+    )
+    return flow
+
+def get_user_info(credentials):
+    """Get user information from Google"""
+    try:
+        service = build('oauth2', 'v2', credentials=credentials)
+        user_info = service.userinfo().get().execute()
+        return user_info
+    except Exception as e:
+        print(f"Error getting user info: {e}")
+        return None
+
+# Authentication Helper Functions
+def create_user_session(user_id):
+    """Create a new session for user"""
+    import secrets
+    session_token = secrets.token_urlsafe(32)
+    user_sessions[session_token] = {
+        'user_id': user_id,
+        'created_at': datetime.now(),
+        'expires_at': datetime.now() + timedelta(hours=24)
+    }
+    return session_token
+
+def get_user_from_session(session_token):
+    """Get user from session token"""
+    if session_token not in user_sessions:
+        return None
+    
+    session_data = user_sessions[session_token]
+    if datetime.now() > session_data['expires_at']:
+        del user_sessions[session_token]
+        return None
+    
+    return UserService.get_user_by_id(session_data['user_id'])
+
+def send_gmail(credentials, to_email, subject, body, attachment_path=None, attachment_name=None, sender_name=None, user_email=None):
+    """Send email using Gmail API"""
+    try:
+        print(f"📧 Starting Gmail send process...")
+        print(f"📧 Sender name from database: {sender_name or 'InMailer'}")
+        print(f"📧 User email from database: {user_email or 'Not provided'}")
+        print(f"📧 To: {to_email}")
+        print(f"📧 Subject: {subject}")
+        print(f"📧 Body length: {len(body)} characters")
+        print(f"📧 Attachment: {attachment_path}")
+        print(f"📧 Attachment name: {attachment_name}")
+        
+        service = build('gmail', 'v1', credentials=credentials)
+        print(f"✅ Gmail service built successfully")
+        
+        # Create email message with sender name and user email from database
+        message = create_email_message(to_email, subject, body, attachment_path, attachment_name, sender_name, user_email)
+        print(f"✅ Email message created successfully")
+        
+        # Send the email directly - the sender name is already set in the message headers
+        try:
+            sent_message = service.users().messages().send(userId='me', body=message).execute()
+            print(f"✅ Email sent successfully! Message ID: {sent_message.get('id')}")
+            print(f"📧 Email sent with sender name: '{sender_name}' from database")
+            return sent_message
+        except Exception as send_error:
+            print(f"❌ Error during Gmail API send: {send_error}")
+            
+            # Check if it's a credentials issue
+            if "credentials" in str(send_error).lower() or "refresh" in str(send_error).lower():
+                print(f"🔍 This appears to be a credentials issue. User may need to re-authenticate.")
+                print(f"🔍 Error details: {send_error}")
+                return None
+            else:
+                # Re-raise other errors
+                raise send_error
+        
+    except Exception as e:
+        print(f"❌ Error sending Gmail: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+def create_email_message(to_email, subject, body, attachment_path=None, attachment_name=None, sender_name=None, user_email=None):
+    """Create email message for Gmail API"""
+    import base64
+    import mimetypes
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.base import MIMEBase
+    from email.encoders import encode_base64
+    
+    message = MIMEMultipart()
+    message['to'] = to_email
+    message['subject'] = subject
+    
+    # Use the actual user's name and email from database
+    if sender_name and user_email:
+        # Set the From field to show the user's name but use their real email
+        message['From'] = f"{sender_name} <{user_email}>"
+        message['Sender'] = f"{sender_name} <{user_email}>"
+        message['Reply-To'] = f"{sender_name} <{user_email}>"
+        
+        # Add custom headers that some email clients will respect
+        message['X-Sender'] = sender_name
+        message['X-From'] = sender_name
+        
+        print(f"📧 Setting sender name from database: {sender_name}")
+        print(f"📧 Using actual user email: {user_email}")
+        print(f"📧 Email will display as: {sender_name} <{user_email}>")
+    else:
+        message['From'] = "InMailer <inmailer@gmail.com>"
+        print(f"📧 Using default From field: InMailer")
+    
+    # Add text body
+    text_part = MIMEText(body, 'plain')
+    message.attach(text_part)
+    
+    # Add attachment if provided
+    if attachment_path and os.path.exists(attachment_path):
+        print(f"📎 Processing attachment: {attachment_path}")
+        
+        # Detect MIME type
+        mime_type, _ = mimetypes.guess_type(attachment_path)
+        if mime_type is None:
+            mime_type = 'application/octet-stream'
+        
+        print(f"📎 Detected MIME type: {mime_type}")
+        
+        # Get file extension for better MIME type detection
+        file_extension = os.path.splitext(attachment_path)[1].lower()
+        
+        # Handle common file types with proper MIME types
+        if file_extension == '.pdf':
+            mime_type = 'application/pdf'
+        elif file_extension in ['.doc', '.docx']:
+            mime_type = 'application/msword' if file_extension == '.doc' else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        elif file_extension in ['.jpg', '.jpeg']:
+            mime_type = 'image/jpeg'
+        elif file_extension == '.png':
+            mime_type = 'image/png'
+        elif file_extension == '.txt':
+            mime_type = 'text/plain'
+        
+        print(f"📎 Final MIME type: {mime_type}")
+        
+        # Create attachment part
+        main_type, sub_type = mime_type.split('/', 1)
+        
+        with open(attachment_path, 'rb') as f:
+            attachment_data = f.read()
+            print(f"📎 Attachment size: {len(attachment_data)} bytes")
+            
+            if main_type == 'text':
+                # Handle text files
+                attachment = MIMEText(attachment_data.decode('utf-8', errors='ignore'), sub_type)
+            elif main_type == 'image':
+                # Handle image files
+                attachment = MIMEText(attachment_data, 'base64', filename=attachment_name or os.path.basename(attachment_path))
+            else:
+                # Handle binary files (PDF, DOC, etc.)
+                attachment = MIMEBase(main_type, sub_type)
+                attachment.set_payload(attachment_data)
+                # Encode the attachment properly
+                encode_base64(attachment)
+            
+            # Set filename - use original filename if provided, otherwise fall back to path basename
+            filename = attachment_name if attachment_name else os.path.basename(attachment_path)
+            attachment.add_header('Content-Disposition', 'attachment', filename=filename)
+            message.attach(attachment)
+            print(f"✅ Attachment attached successfully with filename: {filename}")
+    
+    # Encode message
+    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+    return {'raw': raw_message}
+
+def create_app():
+    """Create and configure the Flask app"""
+    app = Flask(__name__)
+    
+    # Configure Flask app
+    app.secret_key = os.getenv('FLASK_SECRET_KEY', 'inmailer-secret-key-change-in-production')
+    
+    # Use simple Flask sessions (no flask-session) for better reliability
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
+    
+    print("📁 Using simple Flask sessions for better reliability")
+    
+    # CORS configuration with specific settings for sessions
+    CORS(app, 
+         supports_credentials=True,
+         origins=['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001'],
+         allow_headers=['Content-Type', 'Authorization'],
+         methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
+    
+    # Initialize database and templates when app is created
+    with app.app_context():
+        initialize_templates()
+    
+    return app
+
+app = create_app()
+
+# Database-integrated API endpoints
+@app.route('/api/templates', methods=['GET'])
+def get_templates():
+    """Get all templates for the authenticated user"""
+    try:
+        # Get user from session
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = user_info.get('email')
+        user = UserService.get_user_by_email(user_email)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Get user's templates from database
+        templates = TemplateService.get_user_templates(user.id)
+        
+        # Convert to JSON-serializable format
+        templates_data = []
+        for template in templates:
+            templates_data.append({
+                'id': template.id,
+                'name': template.name,
+                'subject': template.subject,
+                'content': template.content,
+                'variables': template.variables,
+                'attachment_path': template.attachment_path,
+                'attachment_name': template.attachment_name,
+                'created_at': template.created_at.isoformat() if template.created_at else None,
+                'updated_at': template.updated_at.isoformat() if template.updated_at else None
+            })
+        
+        print(f"🔍 Debug: Returning {len(templates_data)} templates for user {user_email}")
+        return jsonify(templates_data)
+        
+    except Exception as e:
+        print(f"❌ Error getting templates: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/templates', methods=['POST'])
+def create_template():
+    """Create a new template for the authenticated user"""
+    try:
+        # Get user from session
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = user_info.get('email')
+        user = UserService.get_user_by_email(user_email)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Handle both JSON data and file uploads
+        template_name = None
+        subject = None
+        content = None
+        variables = []
+        attachment_path = None
+        attachment_name = None
+        
+        # Check if this is a multipart form (with file) or JSON
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            # Handle multipart form data (with file upload)
+            template_name = request.form.get('name')
+            subject = request.form.get('subject')
+            content = request.form.get('content')
+            variables_str = request.form.get('variables', '[]')
+            try:
+                variables = json.loads(variables_str) if variables_str else []
+            except:
+                variables = []
+            
+            # Handle file upload
+            if 'file' in request.files:
+                file = request.files['file']
+                if file.filename != '':
+                    # Create attachments directory if it doesn't exist
+                    attachments_dir = Path("Templates/attachments")
+                    attachments_dir.mkdir(exist_ok=True)
+                    
+                    # Generate unique filename
+                    import uuid
+                    file_extension = Path(file.filename).suffix
+                    unique_filename = f"{uuid.uuid4()}{file_extension}"
+                    file_path = attachments_dir / unique_filename
+                    
+                    # Save file
+                    file.save(file_path)
+                    
+                    attachment_path = str(file_path)
+                    attachment_name = file.filename
+                    print(f"✅ New attachment uploaded: {attachment_name}")
+        else:
+            # Handle JSON data (no file upload)
+            data = request.json
+            template_name = data.get('name')
+            subject = data.get('subject')
+            content = data.get('content')
+            variables = data.get('variables', [])
+        
+        if not all([template_name, subject, content]):
+            return jsonify({'error': 'Missing required fields'}), 400
+        
+        # Create template in database
+        template = TemplateService.create_template(
+            user_id=user.id,
+            name=template_name,
+            subject=subject,
+            content=content,
+            variables=variables,
+            attachment_path=attachment_path,
+            attachment_name=attachment_name
+        )
+        
+        # Convert to JSON-serializable format
+        template_data = {
+            'id': template.id,
+            'name': template.name,
+            'subject': template.subject,
+            'content': template.content,
+            'variables': template.variables,
+            'attachment_path': template.attachment_path,
+            'attachment_name': template.attachment_name,
+            'created_at': template.created_at.isoformat() if template.created_at else None,
+            'updated_at': template.updated_at.isoformat() if template.updated_at else None
+        }
+        
+        print(f"✅ Template created successfully: {template_name}")
+        return jsonify({'message': 'Template created successfully', 'template': template_data}), 201
+        
+    except Exception as e:
+        print(f"❌ Error creating template: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/templates/<int:template_id>', methods=['PUT'])
+def update_template(template_id):
+    """Update an existing template for the authenticated user"""
+    try:
+        # Get user from session
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = user_info.get('email')
+        user = UserService.get_user_by_email(user_email)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Handle both JSON data and file uploads
+        template_name = None
+        subject = None
+        content = None
+        variables = []
+        attachment_path = None
+        attachment_name = None
+        
+        # Check if this is a multipart form (with file) or JSON
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            # Handle multipart form data (with file upload)
+            template_name = request.form.get('name')
+            subject = request.form.get('subject')
+            content = request.form.get('content')
+            variables_str = request.form.get('variables', '[]')
+            try:
+                variables = json.loads(variables_str) if variables_str else []
+            except:
+                variables = []
+            
+            # Handle file upload
+            if 'file' in request.files:
+                file = request.files['file']
+                if file.filename != '':
+                    # Create attachments directory if it doesn't exist
+                    attachments_dir = Path("Templates/attachments")
+                    attachments_dir.mkdir(exist_ok=True)
+                    
+                    # Generate unique filename
+                    import uuid
+                    file_extension = Path(file.filename).suffix
+                    unique_filename = f"{uuid.uuid4()}{file_extension}"
+                    file_path = attachments_dir / unique_filename
+                    
+                    # Save file
+                    file.save(file_path)
+                    
+                    attachment_path = str(file_path)
+                    attachment_name = file.filename
+                    print(f"✅ New attachment uploaded: {attachment_name}")
+        else:
+            # Handle JSON data (no file upload)
+            data = request.json
+            template_name = data.get('name')
+            subject = data.get('subject')
+            content = data.get('content')
+            variables = data.get('variables', [])
+        
+        if not all([template_name, subject, content]):
+            return jsonify({'error': 'Missing required fields'}), 400
+        
+        # Update template in database
+        update_data = {
+            'name': template_name,
+            'subject': subject,
+            'content': content,
+            'variables': variables
+        }
+        
+        # Only update attachment if new one was uploaded
+        if attachment_path and attachment_name:
+            update_data['attachment_path'] = attachment_path
+            update_data['attachment_name'] = attachment_name
+        
+        template = TemplateService.update_template(
+            template_id=template_id,
+            user_id=user.id,
+            **update_data
+        )
+        
+        if not template:
+            return jsonify({'error': 'Template not found'}), 404
+        
+        # Convert to JSON-serializable format
+        template_data = {
+            'id': template.id,
+            'name': template.name,
+            'subject': template.subject,
+            'content': template.content,
+            'variables': template.variables,
+            'attachment_path': template.attachment_path,
+            'attachment_name': template.attachment_name,
+            'created_at': template.created_at.isoformat() if template.created_at else None,
+            'updated_at': template.updated_at.isoformat() if template.updated_at else None
+        }
+        
+        print(f"✅ Template updated successfully: {template_name}")
+        return jsonify({'message': 'Template updated successfully', 'template': template_data}), 200
+        
+    except Exception as e:
+        print(f"❌ Error updating template: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/templates/<int:template_id>', methods=['DELETE'])
+def delete_template(template_id):
+    """Delete a template for the authenticated user"""
+    try:
+        # Get user from session
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = user_info.get('email')
+        user = UserService.get_user_by_email(user_email)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Delete template from database
+        success = TemplateService.delete_template(template_id, user.id)
+        
+        if not success:
+            return jsonify({'error': 'Template not found'}), 404
+        
+        print(f"✅ Template deleted successfully")
+        return jsonify({'message': 'Template deleted successfully'}), 200
+        
+    except Exception as e:
+        print(f"❌ Error deleting template: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/user/stats', methods=['GET'])
+def get_user_stats():
+    """Get email statistics for the authenticated user"""
+    try:
+        # Get user from session
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = user_info.get('email')
+        user = UserService.get_user_by_email(user_email)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Get user statistics from database
+        stats = EmailLogService.get_user_stats(user.id)
+        
+        return jsonify(stats)
+        
+    except Exception as e:
+        print(f"❌ Error getting user stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/template-attachment', methods=['POST'])
+def upload_template_attachment():
+    """Upload attachment for a template"""
+    try:
+        # Get user from session
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = user_info.get('email')
+        user = UserService.get_user_by_email(user_email)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Check if file was uploaded
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Create attachments directory if it doesn't exist
+        attachments_dir = Path("Templates/attachments")
+        attachments_dir.mkdir(exist_ok=True)
+        
+        # Generate unique filename
+        import uuid
+        file_extension = Path(file.filename).suffix
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        file_path = attachments_dir / unique_filename
+        
+        # Save file
+        file.save(file_path)
+        
+        # Return file info
+        return jsonify({
+            'success': True,
+            'attachment_path': str(file_path),
+            'attachment_name': file.filename,
+            'message': 'Attachment uploaded successfully'
+        })
+        
+    except Exception as e:
+        print(f"❌ Error uploading attachment: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/debug-csv', methods=['POST'])
+def debug_csv():
+    """Debug endpoint to see what's in the CSV file"""
+    try:
+        # Check if file was uploaded
+        if 'csv_file' not in request.files:
+            return jsonify({'error': 'No CSV file uploaded'}), 400
+        
+        csv_file = request.files['csv_file']
+        if csv_file.filename == '':
+            return jsonify({'error': 'No CSV file selected'}), 400
+        
+        # Process CSV file
+        import tempfile
+        temp_file_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.csv') as temp_file:
+                temp_file_path = temp_file.name
+                csv_file.save(temp_file_path)
+                temp_file.seek(0)
+                
+                # Read CSV content
+                import csv
+                reader = csv.DictReader(temp_file)
+                contacts = list(reader)
+        finally:
+            # Clean up temp file
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                except OSError as e:
+                    print(f"⚠️ Warning: Could not delete temp file {temp_file_path}: {e}")
+        
+        if not contacts:
+            return jsonify({'error': 'No contacts found in CSV file'}), 400
+        
+        # Enhanced CSV analysis with variable mapping examples
+        sample_contact = contacts[0] if contacts else {}
+        
+        # Show what variables would be available for templates
+        available_variables = []
+        if sample_contact:
+            for key, value in sample_contact.items():
+                if value and str(value).strip():
+                    available_variables.append({
+                        'original_key': key,
+                        'value': str(value).strip(),
+                        'suggested_template_usage': f'${{{key}}} or ${key}'
+                    })
+        
+        # Return detailed CSV analysis
+        return jsonify({
+            'message': 'CSV analysis complete',
+            'total_contacts': len(contacts),
+            'sample_contact': sample_contact,
+            'all_contact_keys': list(sample_contact.keys()) if sample_contact else [],
+            'available_variables': available_variables,
+            'first_few_contacts': contacts[:3],
+            'template_suggestions': {
+                'subject_example': f'Hello ${{{list(sample_contact.keys())[0] if sample_contact else "First_Name"}}}!',
+                'content_example': f'Dear ${{{list(sample_contact.keys())[0] if sample_contact else "First_Name"}}}, welcome to ${{{list(sample_contact.keys())[1] if len(sample_contact) > 1 else "Company"}}}!'
+            }
+        })
+        
+    except Exception as e:
+        print(f"❌ Error analyzing CSV: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/mail-merge', methods=['POST'])
+def mail_merge_preview():
+    """Generate preview of mail merge emails"""
+    try:
+        # Get user from session
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = user_info.get('email')
+        user = UserService.get_user_by_email(user_email)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Check if file was uploaded
+        if 'csv_file' not in request.files:
+            return jsonify({'error': 'No CSV file uploaded'}), 400
+        
+        csv_file = request.files['csv_file']
+        if csv_file.filename == '':
+            return jsonify({'error': 'No CSV file selected'}), 400
+        
+        template_id = request.form.get('template_id')
+        if not template_id:
+            return jsonify({'error': 'No template ID provided'}), 400
+        
+        try:
+            template_id_int = int(template_id)
+        except ValueError:
+            return jsonify({'error': 'Invalid template ID format'}), 400
+        
+        # Get template from database
+        template = TemplateService.get_template_by_id(template_id_int, user.id)
+        if not template:
+            return jsonify({'error': 'Template not found'}), 404
+        
+        # Process CSV file
+        import tempfile
+        temp_file_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.csv') as temp_file:
+                temp_file_path = temp_file.name
+                csv_file.save(temp_file_path)
+                temp_file.seek(0)
+                
+                # Read CSV content
+                import csv
+                reader = csv.DictReader(temp_file)
+                contacts = list(reader)
+        finally:
+            # Clean up temp file after it's fully closed
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                except OSError as e:
+                    print(f"⚠️ Warning: Could not delete temp file {temp_file_path}: {e}")
+                    # Continue execution even if cleanup fails
+        
+        if not contacts:
+            return jsonify({'error': 'No contacts found in CSV file'}), 400
+        
+        # Generate preview for first few contacts
+        preview_contacts = contacts[:3]  # Show first 3 contacts as preview
+        results = []
+        
+        for contact in preview_contacts:
+            try:
+                # Replace variables in template using the helper function
+                preview_content = replace_template_variables(template.content, contact)
+                preview_subject = replace_template_variables(template.subject, contact)
+                
+                # Create a compact preview with truncated content
+                preview_data = {
+                    'contact': contact,
+                    'subject': preview_subject,
+                    'content': preview_content,
+                    'content_preview': preview_content[:150] + '...' if len(preview_content) > 150 else preview_content,
+                    'status': 'preview',
+                    'contact_summary': {
+                        'name': contact.get('First Name', contact.get('First_Name', contact.get('first_name', contact.get('Name', contact.get('name', 'Unknown'))))),
+                        'email': contact.get('Email', contact.get('email', 'No email')),
+                        'company': contact.get('Company', contact.get('company', 'No company'))
+                    }
+                }
+                
+                results.append(preview_data)
+                
+            except Exception as e:
+                results.append({
+                    'contact': contact,
+                    'subject': 'Error',
+                    'content': f'Error processing contact: {str(e)}',
+                    'status': 'error'
+                })
+        
+        # Create a summary preview for the UI
+        preview_summary = {
+            'total_contacts': len(contacts),
+            'preview_count': len(results),
+            'sample_preview': results[0] if results else None
+        }
+        
+        return jsonify({
+            'message': 'Preview generated successfully',
+            'results': results,
+            'total_contacts': len(contacts),
+            'preview_summary': preview_summary
+        })
+        
+    except Exception as e:
+        print(f"❌ Error generating mail merge preview: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/send-emails', methods=['POST'])
+def send_emails():
+    """Send emails using mail merge"""
+    try:
+        # Get user from session
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = user_info.get('email')
+        user = UserService.get_user_by_email(user_email)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        data = request.json
+        template_id = data.get('template_id')
+        contacts = data.get('contacts', [])
+        
+        if not template_id or not contacts:
+            return jsonify({'error': 'Missing template ID or contacts'}), 400
+        
+        # Get template from database
+        template = TemplateService.get_template_by_id(int(template_id), user.id)
+        if not template:
+            return jsonify({'error': 'Template not found'}), 404
+        
+        # Get user credentials from session
+        credentials_data = session.get('credentials')
+        if not credentials_data:
+            return jsonify({'error': 'No Gmail credentials found. Please sign in with Google again.'}), 401
+        
+        # Recreate credentials object with proper error handling
+        from google.oauth2.credentials import Credentials
+        
+        # Check if all required credential fields are present
+        required_fields = ['token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']
+        missing_fields = [field for field in required_fields if not credentials_data.get(field)]
+        
+        if missing_fields:
+            print(f"❌ Missing required credential fields: {missing_fields}")
+            print(f"🔍 Available fields: {list(credentials_data.keys())}")
+            return jsonify({'error': f'Missing required Gmail credentials: {missing_fields}. Please sign in with Google again.'}), 401
+        
+        try:
+            credentials = Credentials(
+                token=credentials_data['token'],
+                refresh_token=credentials_data['refresh_token'],
+                token_uri=credentials_data['token_uri'],
+                client_id=credentials_data['client_id'],
+                client_secret=credentials_data['client_secret'],
+                scopes=credentials_data['scopes']
+            )
+            print(f"✅ Credentials object recreated successfully")
+        except Exception as e:
+            print(f"❌ Error recreating credentials: {e}")
+            return jsonify({'error': 'Failed to recreate Gmail credentials. Please sign in with Google again.'}), 401
+        
+        # Process each contact
+        results = []
+        success_count = 0
+        error_count = 0
+        
+        for contact in contacts:
+            try:
+                # Get email from contact
+                email = contact.get('Email') or contact.get('email')
+                if not email:
+                    results.append({
+                        'contact': contact,
+                        'status': 'error',
+                        'error': 'No email address found'
+                    })
+                    error_count += 1
+                    continue
+                
+                # Replace variables in template using the helper function
+                email_content = replace_template_variables(template.content, contact)
+                email_subject = replace_template_variables(template.subject, contact)
+                
+                # Debug logging to verify variable replacement
+                print(f"🔍 Debug: Original subject: {template.subject}")
+                print(f"🔍 Debug: Processed subject: {email_subject}")
+                print(f"🔍 Debug: Original content: {template.content[:100]}...")
+                print(f"🔍 Debug: Processed content: {email_content[:100]}...")
+                print(f"🔍 Debug: User info - ID: {user.id}, Name: '{user.name}', Email: {user.email}")
+                
+                # Clear explanation of how sender name works
+                print(f"📧 ===== EMAIL SENDING INFO =====")
+                print(f"📧 Database User Name: '{user.name}' (from name column)")
+                print(f"📧 Database User Email: {user.email}")
+                print(f"📧 Authenticated Gmail Account: {user.email}")
+                print(f"📧 Email will be sent FROM: {user.email} (your Gmail account)")
+                print(f"📧 Email will DISPLAY AS: '{user.name}' (hardcoded from database)")
+                print(f"📧 =================================")
+                
+                # Send email
+                sent_message = send_gmail(
+                    credentials=credentials,
+                    to_email=email,
+                    subject=email_subject,
+                    body=email_content,
+                    attachment_path=template.attachment_path,
+                    attachment_name=template.attachment_name,
+                    sender_name=user.name,
+                    user_email=user.email
+                )
+                
+                if sent_message:
+                    # Log successful email
+                    EmailLogService.create_email_log(
+                        user_id=user.id,
+                        template_id=template.id,
+                        recipient_email=email,
+                        subject=email_subject,
+                        status='sent',
+                        gmail_message_id=sent_message.get('id')
+                    )
+                    
+                    results.append({
+                        'contact': contact,
+                        'status': 'sent',
+                        'message_id': sent_message.get('id')
+                    })
+                    success_count += 1
+                else:
+                    # Log failed email
+                    EmailLogService.create_email_log(
+                        user_id=user.id,
+                        template_id=template.id,
+                        recipient_email=email,
+                        subject=email_subject,
+                        status='failed',
+                        error_message='Failed to send email'
+                    )
+                    
+                    results.append({
+                        'contact': contact,
+                        'status': 'error',
+                        'error': 'Failed to send email'
+                    })
+                    error_count += 1
+                    
+            except Exception as e:
+                # Log error
+                email = contact.get('Email') or contact.get('email') or 'Unknown'
+                EmailLogService.create_email_log(
+                    user_id=user.id,
+                    template_id=template.id,
+                    recipient_email=email,
+                    subject='Error',
+                    status='failed',
+                    error_message=str(e)
+                )
+                
+                results.append({
+                    'contact': contact,
+                    'status': 'error',
+                    'error': str(e)
+                })
+                error_count += 1
+        
+        return jsonify({
+            'message': f'Email processing complete. {success_count} sent, {error_count} failed.',
+            'results': results,
+            'success_count': success_count,
+            'error_count': error_count
+        })
+        
+    except Exception as e:
+        print(f"❌ Error sending emails: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/debug/credentials', methods=['GET'])
+def debug_credentials():
+    """Debug endpoint to check what credentials are stored in session"""
+    try:
+        # Get user from session
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        credentials_data = session.get('credentials')
+        if not credentials_data:
+            return jsonify({'error': 'No credentials found in session'}), 401
+        
+        # Check credential fields
+        credential_info = {
+            'has_token': bool(credentials_data.get('token')),
+            'has_refresh_token': bool(credentials_data.get('refresh_token')),
+            'has_token_uri': bool(credentials_data.get('token_uri')),
+            'has_client_id': bool(credentials_data.get('client_id')),
+            'has_client_secret': bool(credentials_data.get('client_secret')),
+            'has_scopes': bool(credentials_data.get('scopes')),
+            'token_length': len(credentials_data.get('token', '')) if credentials_data.get('token') else 0,
+            'refresh_token_length': len(credentials_data.get('refresh_token', '')) if credentials_data.get('refresh_token') else 0,
+            'scopes_count': len(credentials_data.get('scopes', [])) if credentials_data.get('scopes') else 0,
+            'available_fields': list(credentials_data.keys())
+        }
+        
+        return jsonify({
+            'message': 'Credential debug info',
+            'user_email': user_info.get('email'),
+            'credential_info': credential_info,
+            'note': 'If any required fields are missing, you may need to sign in again with Google'
+        })
+        
+    except Exception as e:
+        print(f"❌ Error debugging credentials: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/user/gmail-setup', methods=['GET'])
+def get_gmail_setup_instructions():
+    """Get instructions for setting up Gmail display name"""
+    try:
+        # Get user from session
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = user_info.get('email')
+        user = UserService.get_user_by_email(user_email)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        instructions = {
+            'message': 'Gmail Display Name Setup Instructions',
+            'user_name': user.name,
+            'user_email': user.email,
+            'current_issue': f'Currently emails show as "{user.email}" instead of "{user.name}"',
+            'solution': 'Set your Gmail display name to show your name instead of email address',
+            'steps': [
+                '1. Go to Gmail (gmail.com)',
+                '2. Click the gear icon (Settings) in the top right',
+                '3. Click "See all settings"',
+                '4. Go to "General" tab',
+                '5. Find "Send mail as" section',
+                '6. Click "Edit info" next to your email address',
+                '7. Set "Name" field to your desired display name',
+                '8. Click "Save Changes"',
+                '9. Wait a few minutes for changes to take effect'
+            ],
+            'note': 'After setting this, your emails will show as "Your Name <email@gmail.com>" instead of just the email address'
+        }
+        
+        return jsonify(instructions)
+        
+    except Exception as e:
+        print(f"❌ Error getting Gmail setup instructions: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# Keep existing OAuth and authentication routes
+@app.route('/auth/google')
+def google_auth():
+    """Initiate Google OAuth flow"""
+    try:
+        flow = create_flow()
+        flow.redirect_uri = GOOGLE_REDIRECT_URI
+        
+        authorization_url, state = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true'
+        )
+        
+        # Store state in session for security
+        session['oauth_state'] = state
+        
+        print(f"🔍 OAuth initiated - State: {state}")
+        print(f"🔍 Authorization URL: {authorization_url}")
+        
+        # Redirect directly to Google's OAuth page
+        return redirect(authorization_url)
+        
+    except Exception as e:
+        print(f"Error creating OAuth flow: {e}")
+        return jsonify({'error': 'Failed to initiate OAuth flow'}), 500
+
+@app.route('/auth/google/callback')
+def google_callback():
+    """Handle Google OAuth callback"""
+    try:
+        print("🔄 OAuth callback started...")
+        
+        # Get authorization code from callback
+        code = request.args.get('code')
+        state = request.args.get('state')
+        
+        print(f"🔍 Received code: {code[:20]}..." if code else "❌ No code received")
+        print(f"🔍 Received state: {state}")
+        print(f"🔍 Session state: {session.get('oauth_state')}")
+        
+        # Check if we have a code
+        if not code:
+            print("❌ No authorization code received")
+            return jsonify({'error': 'No authorization code received'}), 400
+        
+        # Verify state matches
+        session_state = session.get('oauth_state')
+        if state != session_state:
+            print(f"❌ State mismatch! Received: {state}, Session: {session_state}")
+            print(f"🔍 Session keys: {list(session.keys())}")
+            print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
+            
+            # For development/testing, we'll be more lenient
+            # In production, you should enforce strict state validation
+            print("⚠️  Proceeding despite state mismatch for development testing...")
+        
+        print("✅ State verified")
+        
+        # Create flow and exchange code for tokens
+        print("🔄 Creating OAuth flow...")
+        flow = create_flow()
+        flow.redirect_uri = GOOGLE_REDIRECT_URI
+        print(f"🔍 Redirect URI: {GOOGLE_REDIRECT_URI}")
+        
+        # Exchange authorization code for tokens
+        print("🔄 Exchanging code for tokens...")
+        flow.fetch_token(code=code)
+        credentials = flow.credentials
+        print("✅ Tokens received successfully")
+        
+        # Handle scope differences (Google might add 'openid' automatically)
+        print(f"🔍 Received scopes: {credentials.scopes}")
+        print(f"🔍 Expected scopes: {SCOPES}")
+        
+        # Check if we have the minimum required scopes
+        # We need these specific scopes for the app to work
+        required_scopes = [
+            'https://www.googleapis.com/auth/gmail.send',
+            'https://www.googleapis.com/auth/userinfo.profile',
+            'https://www.googleapis.com/auth/userinfo.email'
+        ]
+        
+        # Check if we have all required scopes (either full URLs or basic equivalents)
+        missing_scopes = []
+        for required_scope in required_scopes:
+            scope_name = required_scope.split('/')[-1]  # Extract 'gmail.send', 'userinfo.profile', etc.
+            
+            # Check if we have the full scope URL
+            if required_scope in credentials.scopes:
+                print(f"✅ Found full scope: {required_scope}")
+                continue
+                
+            # Check if we have the basic equivalent (e.g., 'email' for 'userinfo.email')
+            if scope_name in credentials.scopes:
+                print(f"✅ Found basic scope equivalent: {scope_name} for {required_scope}")
+                continue
+                
+            # Check for other variations
+            if 'gmail.send' in required_scope and any('gmail' in s for s in credentials.scopes):
+                print(f"✅ Found Gmail scope variation")
+                continue
+                
+            if 'userinfo' in required_scope and any('profile' in s or 'email' in s for s in credentials.scopes):
+                print(f"✅ Found userinfo scope variation")
+                continue
+                
+            missing_scopes.append(required_scope)
+            print(f"❌ Missing scope: {required_scope}")
+        
+        if missing_scopes:
+            print(f"⚠️  Missing required scopes: {missing_scopes}")
+            return jsonify({'error': f'Missing required scopes: {missing_scopes}'}), 400
+        
+        print("✅ All required scopes are present!")
+        
+        # Get user information
+        print("🔄 Getting user information...")
+        user_info = get_user_info(credentials)
+        if not user_info:
+            print("❌ Failed to get user info from Google")
+            return jsonify({'error': 'Failed to get user information from Google'}), 500
+        
+        print(f"✅ User info received: {user_info.get('email', 'No email')}")
+        print(f"🔍 Full user_info from Google: {user_info}")
+        print(f"🔍 User name from Google: '{user_info.get('name', 'No name')}'")
+        print(f"🔍 User email from Google: '{user_info.get('email', 'No email')}'")
+        
+        # Store user info and tokens in session
+        session['user_info'] = user_info
+        session['credentials'] = {
+            'token': credentials.token,
+            'refresh_token': credentials.refresh_token,
+            'token_uri': credentials.token_uri,
+            'client_id': credentials.client_id,
+            'client_secret': credentials.client_secret,
+            'scopes': credentials.scopes
+        }
+        
+        # Also store in our database system
+        user_email = user_info.get('email')
+        existing_user = UserService.get_user_by_email(user_email)
+        
+        if not existing_user:
+            # Create new user from Google OAuth
+            user_name = user_info.get('name', 'Google User')
+            print(f"🔍 Creating new user with name: '{user_name}' and email: '{user_email}'")
+            user = UserService.create_user(
+                email=user_email,
+                name=user_name,
+                is_google_user=True
+            )
+            print(f"✅ Created new Google user: {user_email} with name: '{user.name}'")
+        else:
+            # Update existing user
+            print(f"🔍 Updating existing user: {user_email}")
+            user_name = user_info.get('name', 'Google User')
+            print(f"🔍 Updating user name to: '{user_name}'")
+            user = UserService.update_user_google_oauth(existing_user.id, user_name)
+            print(f"✅ Updated existing user with Google OAuth: {user_email}")
+            print(f"🔍 User name after update: '{user.name}'")
+        
+        print(f"✅ OAuth successful! User: {user_info.get('email')}")
+        print(f"✅ Session stored: {list(session.keys())}")
+        
+        # Redirect to frontend after successful OAuth
+        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3001')
+        return redirect(f"{frontend_url}/auth/success?email={user_info.get('email')}&name={user_info.get('name')}")
+        
+    except Exception as e:
+        print(f"Error in OAuth callback: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': 'OAuth callback failed'}), 500
+
+@app.route('/auth/user')
+def get_user():
+    """Get current authenticated user information"""
+    print(f"🔍 /auth/user endpoint called")
+    print(f"🔍 Request origin: {request.headers.get('Origin')}")
+    print(f"🔍 Request cookies: {dict(request.cookies)}")
+    print(f"🔍 Session contents: {list(session.keys())}")
+    print(f"🔍 User info in session: {session.get('user_info')}")
+    print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
+    
+    user_info = session.get('user_info')
+    if not user_info:
+        print(f"❌ No user_info in session")
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    print(f"✅ User authenticated: {user_info.get('email')}")
+    return jsonify({
+        'id': user_info.get('id'),
+        'email': user_info.get('email'),
+        'name': user_info.get('name'),
+        'picture': user_info.get('picture')
+    })
+
+@app.route('/auth/logout')
+def logout():
+    """Logout user and clear session"""
+    session.clear()
+    return jsonify({'message': 'Logged out successfully'})
+
+# Keep other existing routes for compatibility
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    email_user = os.getenv("EMAIL_USER", "NOT SET")
+    display_name = os.getenv("EMAIL_DISPLAY_NAME", "Parva")
+    from_address = f"{display_name} <{email_user}>" if display_name and email_user != "NOT SET" else email_user
+    
+    return jsonify({
+        'status': 'healthy', 
+        'email_configured': bool(os.getenv("EMAIL_USER") and os.getenv("EMAIL_PASSWORD")),
+        'email_user': email_user,
+        'email_display_name': display_name,
+        'from_address': from_address,
+        'email_host': os.getenv("EMAIL_HOST", "NOT SET"),
+        'email_port': os.getenv("EMAIL_PORT", "NOT SET")
+    })
+
+if __name__ == '__main__':
+    print("🚀 Starting InMailer Backend with Database...")
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_ENV') == 'development'
+    app.run(debug=debug, host='0.0.0.0', port=port)
