@@ -1851,7 +1851,8 @@ def google_callback():
         print(f"✅ Session stored: {list(session.keys())}")
         
         # Redirect to frontend after successful OAuth
-        return redirect(f"http://localhost:3001/auth/success?email={user_info.get('email')}&name={user_info.get('name')}")
+        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3001')
+        return redirect(f"{frontend_url}/auth/success?email={user_info.get('email')}&name={user_info.get('name')}")
         
     except Exception as e:
         print(f"Error in OAuth callback: {e}")
@@ -1908,4 +1909,6 @@ def get_all_users():
 
 if __name__ == '__main__':
     print("🚀 Starting InMailer Backend with Database...")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_ENV') == 'development'
+    app.run(debug=debug, host='0.0.0.0', port=port)

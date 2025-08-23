@@ -1,5 +1,8 @@
 # Environment variables
 .env
+.env.local
+.env.production
+.env.development
 
 # Data files
 *.csv
@@ -40,4 +43,6 @@ test_db.py
 clean_database.py
 test_oauth.py
 start_server.py
+test_payment_flow.py
+clean_database.py
 check_user_limit.py
