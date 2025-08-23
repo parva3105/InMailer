@@ -192,7 +192,7 @@ const TemplateCreator: React.FC = () => {
         alert(editMode ? 'Template updated successfully!' : 'Template saved successfully!');
       }
       
-      navigate('/');
+      navigate('/dashboard');
     } catch (error) {
       console.error('Error saving template:', error);
       alert('Error saving template. Please check if the backend server is running.');
@@ -207,7 +207,7 @@ const TemplateCreator: React.FC = () => {
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/dashboard')}
             className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />

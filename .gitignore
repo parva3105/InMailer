@@ -40,6 +40,9 @@ Thumbs.db
 # results.csv - No longer generated, replaced by logs/email_log.csv
 
 test_db.py
+clean_database.py
+test_oauth.py
+start_server.py
 test_payment_flow.py
 clean_database.py
 check_user_limit.py

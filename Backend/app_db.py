@@ -19,6 +19,8 @@ import requests
 from db.config import init_db
 from db.services import UserService, TemplateService, EmailLogService
 from db.models import User, Template, EmailLog
+from db.config import get_db_session
+from sqlalchemy import and_
 
 # Load environment variables from .env file
 load_dotenv()
@@ -27,6 +29,9 @@ load_dotenv()
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5000/auth/google/callback')
+
+# User limit configuration
+MAX_FREE_USERS = int(os.getenv('MAX_FREE_USERS', '50'))
 
 # Gmail API scopes - include openid since Google adds it automatically
 SCOPES = [
@@ -479,10 +484,15 @@ def create_app():
     # Configure Flask app
     app.secret_key = os.getenv('FLASK_SECRET_KEY', 'inmailer-secret-key-change-in-production')
     
-    # Use simple Flask sessions (no flask-session) for better reliability
+    # Enhanced session configuration for better reliability
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
+    app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_DOMAIN'] = None  # Allow localhost
     
-    print("📁 Using simple Flask sessions for better reliability")
+    print("📁 Using enhanced Flask sessions for better reliability")
+    print(f"🔑 Secret key configured: {'Yes' if app.secret_key != 'inmailer-secret-key-change-in-production' else 'No (using default)'}")
     
     # CORS configuration with specific settings for sessions
     CORS(app, 
@@ -606,7 +616,12 @@ def create_template():
         if not all([template_name, subject, content]):
             return jsonify({'error': 'Missing required fields'}), 400
         
-        # Create template in database
+        # Create template in database with debug logging
+        print(f"🔍 === TEMPLATE CREATION DEBUG ===")
+        print(f"🔍 Creating template for user ID: {user.id}")
+        print(f"🔍 Template name: {template_name}")
+        print(f"🔍 User email: {user_email}")
+        
         template = TemplateService.create_template(
             user_id=user.id,
             name=template_name,
@@ -616,6 +631,10 @@ def create_template():
             attachment_path=attachment_path,
             attachment_name=attachment_name
         )
+        
+        print(f"🔍 Template created with ID: {template.id}")
+        print(f"🔍 Template user_id: {template.user_id}")
+        print(f"🔍 =================================")
         
         # Convert to JSON-serializable format
         template_data = {
@@ -771,7 +790,21 @@ def delete_template(template_id):
         
     except Exception as e:
         print(f"❌ Error deleting template: {e}")
-        return jsonify({'error': str(e)}), 500
+        
+        # Provide more specific error messages
+        error_message = str(e)
+        if "ForeignKeyViolation" in error_message:
+            return jsonify({
+                'error': 'Cannot delete template. It has associated email logs. Please contact support if you need to delete this template.',
+                'details': 'This template has been used to send emails and cannot be deleted to preserve email history.'
+            }), 400
+        elif "IntegrityError" in error_message:
+            return jsonify({
+                'error': 'Database integrity error. Please try again or contact support.',
+                'details': 'There was an issue with the database operation.'
+            }), 500
+        else:
+            return jsonify({'error': 'Failed to delete template. Please try again.'}), 500
 
 @app.route('/api/user/stats', methods=['GET'])
 def get_user_stats():
@@ -795,6 +828,73 @@ def get_user_stats():
         
     except Exception as e:
         print(f"❌ Error getting user stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/dashboard/stats', methods=['GET'])
+def get_dashboard_stats():
+    """Get dashboard statistics for the authenticated user"""
+    try:
+        # Get user from session
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = user_info.get('email')
+        user = UserService.get_user_by_email(user_email)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Get template count with debug logging
+        print(f"🔍 === DASHBOARD STATS DEBUG ===")
+        print(f"🔍 User ID: {user.id}")
+        print(f"🔍 User Email: {user_email}")
+        print(f"🔍 Calling TemplateService.count_user_templates({user.id})")
+        
+        template_count = TemplateService.count_user_templates(user.id)
+        print(f"🔍 Template count returned: {template_count}")
+        
+        # DIRECT DATABASE TEST - bypass the service layer
+        print(f"🔍 === DIRECT DATABASE TEST ===")
+        from db.models import Template
+        db = get_db_session()
+        try:
+            direct_count = db.query(Template).filter(Template.user_id == user.id).count()
+            print(f"🔍 Direct database count: {direct_count}")
+            
+            # Get all templates for this user
+            user_templates = db.query(Template).filter(Template.user_id == user.id).all()
+            print(f"🔍 Direct database templates found: {len(user_templates)}")
+            for template in user_templates:
+                print(f"🔍   - Template: {template.name} (ID: {template.id})")
+        finally:
+            db.close()
+        print(f"🔍 =================================")
+        
+        # Get email count (only sent emails)
+        print(f"🔍 Calling EmailLogService.get_user_stats({user.id})")
+        sent_emails = EmailLogService.get_user_stats(user.id)
+        print(f"🔍 Email stats returned: {sent_emails}")
+        print(f"🔍 =================================")
+        
+        # Count orphaned email logs (emails with deleted templates)
+        from db.models import EmailLog
+        db = get_db_session()
+        try:
+            orphaned_emails = db.query(EmailLog).filter(
+                and_(EmailLog.user_id == user.id, EmailLog.template_id.is_(None))
+            ).count()
+        finally:
+            db.close()
+        
+        return jsonify({
+            'template_count': template_count,
+            'emails_sent': sent_emails.get('sent_emails', 0),
+            'orphaned_emails': orphaned_emails
+        })
+        
+    except Exception as e:
+        print(f"❌ Error getting dashboard stats: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/template-attachment', methods=['POST'])
@@ -843,6 +943,76 @@ def upload_template_attachment():
         
     except Exception as e:
         print(f"❌ Error uploading attachment: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/debug/database', methods=['GET'])
+def debug_database():
+    """Debug endpoint to check database state"""
+    try:
+        # Get user from session
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = user_info.get('email')
+        user = UserService.get_user_by_email(user_email)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Get database session and check directly
+        from db.models import Template, User
+        db = get_db_session()
+        try:
+            # Check all users
+            all_users = db.query(User).all()
+            user_list = []
+            for u in all_users:
+                user_list.append({
+                    'id': u.id,
+                    'email': u.email,
+                    'name': u.name
+                })
+            
+            # Check all templates
+            all_templates = db.query(Template).all()
+            template_list = []
+            for t in all_templates:
+                template_list.append({
+                    'id': t.id,
+                    'user_id': t.user_id,
+                    'name': t.name,
+                    'subject': t.subject[:50] + '...' if len(t.subject) > 50 else t.subject
+                })
+            
+            # Check templates for this specific user
+            user_templates = db.query(Template).filter(Template.user_id == user.id).all()
+            user_template_list = []
+            for t in user_templates:
+                user_template_list.append({
+                    'id': t.id,
+                    'name': t.name,
+                    'subject': t.subject[:50] + '...' if len(t.subject) > 50 else t.subject
+                })
+            
+            return jsonify({
+                'current_user': {
+                    'id': user.id,
+                    'email': user.email,
+                    'name': user.name
+                },
+                'all_users': user_list,
+                'all_templates': template_list,
+                'user_templates': user_template_list,
+                'user_template_count': len(user_templates),
+                'total_template_count': len(all_templates)
+            })
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        print(f"❌ Error debugging database: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/debug-csv', methods=['POST'])
@@ -1031,9 +1201,20 @@ def mail_merge_preview():
 def send_emails():
     """Send emails using mail merge"""
     try:
+        # Debug session information
+        print(f"🔍 === SEND-EMAILS DEBUG ===")
+        print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
+        print(f"🔍 Session keys: {list(session.keys())}")
+        print(f"🔍 User info in session: {session.get('user_info')}")
+        print(f"🔍 Credentials in session: {session.get('credentials')}")
+        print(f"🔍 Request cookies: {dict(request.cookies)}")
+        print(f"🔍 Request origin: {request.headers.get('Origin')}")
+        print(f"🔍 =========================")
+        
         # Get user from session
         user_info = session.get('user_info')
         if not user_info:
+            print("❌ No user_info found in session")
             return jsonify({'error': 'Not authenticated'}), 401
         
         user_email = user_info.get('email')
@@ -1057,7 +1238,12 @@ def send_emails():
         # Get user credentials from session
         credentials_data = session.get('credentials')
         if not credentials_data:
-            return jsonify({'error': 'No Gmail credentials found. Please sign in with Google again.'}), 401
+            print("❌ No credentials found in session")
+            return jsonify({
+                'error': 'No Gmail credentials found. Please sign in with Google again.',
+                'action': 'sign_in_required',
+                'details': 'Your OAuth session has expired or is missing. Please sign in again to refresh your Gmail access.'
+            }), 401
         
         # Recreate credentials object with proper error handling
         from google.oauth2.credentials import Credentials
@@ -1069,7 +1255,13 @@ def send_emails():
         if missing_fields:
             print(f"❌ Missing required credential fields: {missing_fields}")
             print(f"🔍 Available fields: {list(credentials_data.keys())}")
-            return jsonify({'error': f'Missing required Gmail credentials: {missing_fields}. Please sign in with Google again.'}), 401
+            return jsonify({
+                'error': f'Missing required Gmail credentials: {missing_fields}. Please sign in with Google again.',
+                'action': 'reauth_required',
+                'details': f'The OAuth session is incomplete. Missing: {missing_fields}. This usually happens when Google doesn\'t provide all required tokens. Try signing out completely and signing in again.',
+                'missing_fields': missing_fields,
+                'available_fields': list(credentials_data.keys())
+            }), 401
         
         try:
             credentials = Credentials(
@@ -1238,48 +1430,220 @@ def debug_credentials():
         print(f"❌ Error debugging credentials: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/user/gmail-setup', methods=['GET'])
-def get_gmail_setup_instructions():
-    """Get instructions for setting up Gmail display name"""
+@app.route('/auth/user')
+def get_user():
+    """Get current authenticated user information"""
+    print(f"🔍 /auth/user endpoint called")
+    print(f"🔍 Request origin: {request.headers.get('Origin')}")
+    print(f"🔍 Request cookies: {dict(request.cookies)}")
+    print(f"🔍 Session contents: {list(session.keys())}")
+    print(f"🔍 User info in session: {session.get('user_info')}")
+    print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
+    
+    user_info = session.get('user_info')
+    if not user_info:
+        print(f"❌ No user_info in session")
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    print(f"✅ User authenticated: {user_info.get('email')}")
+    return jsonify({
+        'id': user_info.get('id'),
+        'email': user_info.get('email'),
+        'name': user_info.get('name'),
+        'picture': user_info.get('picture')
+    })
+
+@app.route('/auth/logout')
+def logout():
+    """Logout user and clear session"""
     try:
-        # Get user from session
+        # Get user info before clearing for logging
+        user_email = session.get('user_info', {}).get('email', 'Unknown')
+        print(f"🔍 Logging out user: {user_email}")
+        
+        # Clear all session data
+        session.clear()
+        
+        print(f"✅ Session cleared for user: {user_email}")
+        return jsonify({
+            'message': 'Logged out successfully',
+            'user': user_email,
+            'note': 'All session data and OAuth tokens have been cleared. You will need to sign in again to use Gmail features.'
+        })
+    except Exception as e:
+        print(f"❌ Error during logout: {e}")
+        # Still try to clear session even if there's an error
+        session.clear()
+        return jsonify({'message': 'Logged out (with errors)', 'error': str(e)}), 500
+
+@app.route('/auth/force-reauth')
+def force_reauth():
+    """Force user to re-authenticate by clearing credentials and redirecting to OAuth"""
+    try:
+        user_email = session.get('user_info', {}).get('email', 'Unknown')
+        print(f"🔍 Force re-authentication for user: {user_email}")
+        
+        # Clear only credentials, keep user info for the OAuth flow
+        if 'credentials' in session:
+            del session['credentials']
+            print(f"✅ Credentials cleared for user: {user_email}")
+        
+        # Redirect to OAuth flow
+        return redirect('/auth/google')
+        
+    except Exception as e:
+        print(f"❌ Error during force re-auth: {e}")
+        return jsonify({'error': 'Failed to force re-authentication'}), 500
+
+@app.route('/auth/validate-credentials')
+def validate_credentials():
+    """Validate if current Gmail credentials are still valid"""
+    try:
         user_info = session.get('user_info')
         if not user_info:
             return jsonify({'error': 'Not authenticated'}), 401
         
-        user_email = user_info.get('email')
-        user = UserService.get_user_by_email(user_email)
+        credentials_data = session.get('credentials')
+        if not credentials_data:
+            return jsonify({
+                'valid': False,
+                'error': 'No credentials found',
+                'action': 'sign_in_required'
+            }), 200
         
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
+        # Check if all required fields are present
+        required_fields = ['token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']
+        missing_fields = [field for field in required_fields if not credentials_data.get(field)]
         
-        instructions = {
-            'message': 'Gmail Display Name Setup Instructions',
-            'user_name': user.name,
-            'user_email': user.email,
-            'current_issue': f'Currently emails show as "{user.email}" instead of "{user.name}"',
-            'solution': 'Set your Gmail display name to show your name instead of email address',
-            'steps': [
-                '1. Go to Gmail (gmail.com)',
-                '2. Click the gear icon (Settings) in the top right',
-                '3. Click "See all settings"',
-                '4. Go to "General" tab',
-                '5. Find "Send mail as" section',
-                '6. Click "Edit info" next to your email address',
-                '7. Set "Name" field to your desired display name',
-                '8. Click "Save Changes"',
-                '9. Wait a few minutes for changes to take effect'
-            ],
-            'note': 'After setting this, your emails will show as "Your Name <email@gmail.com>" instead of just the email address'
-        }
+        if missing_fields:
+            return jsonify({
+                'valid': False,
+                'error': f'Missing credential fields: {missing_fields}',
+                'action': 'reauth_required',
+                'missing_fields': missing_fields
+            }), 200
         
-        return jsonify(instructions)
-        
+        # Try to recreate credentials object
+        try:
+            from google.oauth2.credentials import Credentials
+            credentials = Credentials(
+                token=credentials_data['token'],
+                refresh_token=credentials_data['refresh_token'],
+                token_uri=credentials_data['token_uri'],
+                client_id=credentials_data['client_id'],
+                client_secret=credentials_data['client_secret'],
+                scopes=credentials_data['scopes']
+            )
+            
+            # Test if credentials work by making a simple Gmail API call
+            from googleapiclient.discovery import build
+            service = build('gmail', 'v1', credentials=credentials)
+            
+            # Try to get user profile (lightweight call)
+            profile = service.users().getProfile(userId='me').execute()
+            
+            return jsonify({
+                'valid': True,
+                'user_email': profile.get('emailAddress'),
+                'message': 'Credentials are valid and working'
+            })
+            
+        except Exception as e:
+            return jsonify({
+                'valid': False,
+                'error': f'Credentials validation failed: {str(e)}',
+                'action': 'reauth_required'
+            }), 200
+            
     except Exception as e:
-        print(f"❌ Error getting Gmail setup instructions: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({
+            'valid': False,
+            'error': f'Validation error: {str(e)}',
+            'action': 'unknown_error'
+        }), 500
 
-# Keep existing OAuth and authentication routes
+@app.route('/auth/debug-session')
+def debug_session():
+    """Debug endpoint to check session state"""
+    print(f"🔍 === SESSION DEBUG ENDPOINT ===")
+    print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
+    print(f"🔍 Session keys: {list(session.keys())}")
+    print(f"🔍 User info: {session.get('user_info')}")
+    print(f"🔍 Credentials: {session.get('credentials')}")
+    print(f"🔍 Request cookies: {dict(request.cookies)}")
+    print(f"🔍 Request origin: {request.headers.get('Origin')}")
+    print(f"🔍 ==============================")
+    
+    credentials_data = session.get('credentials', {})
+    required_fields = ['token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']
+    missing_fields = [field for field in required_fields if not credentials_data.get(field)]
+    
+    return jsonify({
+        'session_id': session.get('_id'),
+        'session_keys': list(session.keys()),
+        'user_info': session.get('user_info'),
+        'has_credentials': bool(credentials_data),
+        'credentials_keys': list(credentials_data.keys()) if credentials_data else [],
+        'missing_credential_fields': missing_fields,
+        'has_refresh_token': bool(credentials_data.get('refresh_token')),
+        'credential_status': 'complete' if not missing_fields else 'incomplete',
+        'cookies': dict(request.cookies),
+        'origin': request.headers.get('Origin'),
+        'recommendations': {
+            'action_needed': 'reauth' if missing_fields else 'none',
+            'message': 'Credentials are incomplete. Please sign in again.' if missing_fields else 'Credentials look complete.'
+        }
+    })
+
+# Keep other existing routes for compatibility
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    email_user = os.getenv("EMAIL_USER", "NOT SET")
+    display_name = os.getenv("EMAIL_DISPLAY_NAME", "Parva")
+    from_address = f"{display_name} <{email_user}>" if display_name and email_user != "NOT SET" else email_user
+    
+    return jsonify({
+        'status': 'healthy', 
+        'email_configured': bool(os.getenv("EMAIL_USER") and os.getenv("EMAIL_PASSWORD")),
+        'email_user': email_user,
+        'email_display_name': display_name,
+        'from_address': from_address,
+        'email_host': os.getenv("EMAIL_HOST", "NOT SET"),
+        'email_port': os.getenv("EMAIL_PORT", "NOT SET")
+    })
+
+# OAuth Helper Functions
+def create_flow():
+    """Create OAuth flow for Google authentication"""
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise ValueError("Google OAuth credentials not configured")
+    
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [GOOGLE_REDIRECT_URI]
+            }
+        },
+        scopes=SCOPES
+    )
+    return flow
+
+def get_user_info(credentials):
+    """Get user information from Google"""
+    try:
+        service = build('oauth2', 'v2', credentials=credentials)
+        user_info = service.userinfo().get().execute()
+        return user_info
+    except Exception as e:
+        print(f"Error getting user info: {e}")
+        return None
+
+# OAuth Routes
 @app.route('/auth/google')
 def google_auth():
     """Initiate Google OAuth flow"""
@@ -1289,7 +1653,8 @@ def google_auth():
         
         authorization_url, state = flow.authorization_url(
             access_type='offline',
-            include_granted_scopes='true'
+            include_granted_scopes='true',
+            prompt='consent'
         )
         
         # Store state in session for security
@@ -1349,6 +1714,15 @@ def google_callback():
         credentials = flow.credentials
         print("✅ Tokens received successfully")
         
+        # Debug credential details
+        print(f"🔍 Credential details:")
+        print(f"🔍 - Has token: {'Yes' if credentials.token else 'No'}")
+        print(f"🔍 - Has refresh_token: {'Yes' if credentials.refresh_token else 'No'}")
+        print(f"🔍 - Token URI: {credentials.token_uri}")
+        print(f"🔍 - Client ID: {credentials.client_id}")
+        print(f"🔍 - Has client_secret: {'Yes' if credentials.client_secret else 'No'}")
+        print(f"🔍 - Scopes: {credentials.scopes}")
+        
         # Handle scope differences (Google might add 'openid' automatically)
         print(f"🔍 Received scopes: {credentials.scopes}")
         print(f"🔍 Expected scopes: {SCOPES}")
@@ -1394,6 +1768,18 @@ def google_callback():
         
         print("✅ All required scopes are present!")
         
+        # Check if we have a refresh token - this is critical for long-term access
+        if not credentials.refresh_token:
+            print("❌ CRITICAL: No refresh token received from Google!")
+            print("❌ This usually means the user needs to re-authorize with explicit consent")
+            print("❌ The 'prompt=consent' parameter should force this, but it may not work for existing users")
+            return jsonify({
+                'error': 'No refresh token received. This usually happens when re-authorizing an existing user. Please try signing out completely and signing in again, or use a different Google account.',
+                'details': 'Google only provides refresh tokens on first authorization or when explicitly requested. Try signing out and signing in again.'
+            }), 400
+        
+        print("✅ Refresh token received successfully!")
+        
         # Get user information
         print("🔄 Getting user information...")
         user_info = get_user_info(credentials)
@@ -1417,20 +1803,41 @@ def google_callback():
             'scopes': credentials.scopes
         }
         
+        # Debug session storage
+        print(f"🔍 === OAUTH CALLBACK DEBUG ===")
+        print(f"🔍 Session ID after storing: {session.get('_id', 'No ID')}")
+        print(f"🔍 Session keys after storing: {list(session.keys())}")
+        print(f"🔍 Credentials stored: {list(session.get('credentials', {}).keys())}")
+        print(f"🔍 Has refresh_token: {'Yes' if session.get('credentials', {}).get('refresh_token') else 'No'}")
+        print(f"🔍 ==============================")
+        
         # Also store in our database system
         user_email = user_info.get('email')
         existing_user = UserService.get_user_by_email(user_email)
         
         if not existing_user:
+            # Check if we've reached the user limit
+            if not UserService.is_user_registration_allowed(MAX_FREE_USERS):
+                current_count = UserService.get_total_user_count()
+                print(f"❌ User limit reached! Current users: {current_count}, Max allowed: {MAX_FREE_USERS}")
+                return jsonify({
+                    'error': f'Sorry! We have reached our limit of {MAX_FREE_USERS} free users. Please contact us for premium access.',
+                    'user_limit_reached': True,
+                    'current_users': current_count,
+                    'max_users': MAX_FREE_USERS
+                }), 403
+            
             # Create new user from Google OAuth
             user_name = user_info.get('name', 'Google User')
             print(f"🔍 Creating new user with name: '{user_name}' and email: '{user_email}'")
+            print(f"🔍 Current user count: {UserService.get_total_user_count()}/{MAX_FREE_USERS}")
             user = UserService.create_user(
                 email=user_email,
                 name=user_name,
                 is_google_user=True
             )
             print(f"✅ Created new Google user: {user_email} with name: '{user.name}'")
+            print(f"✅ New user count: {UserService.get_total_user_count()}/{MAX_FREE_USERS}")
         else:
             # Update existing user
             print(f"🔍 Updating existing user: {user_email}")
@@ -1453,52 +1860,52 @@ def google_callback():
         traceback.print_exc()
         return jsonify({'error': 'OAuth callback failed'}), 500
 
-@app.route('/auth/user')
-def get_user():
-    """Get current authenticated user information"""
-    print(f"🔍 /auth/user endpoint called")
-    print(f"🔍 Request origin: {request.headers.get('Origin')}")
-    print(f"🔍 Request cookies: {dict(request.cookies)}")
-    print(f"🔍 Session contents: {list(session.keys())}")
-    print(f"🔍 User info in session: {session.get('user_info')}")
-    print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
-    
-    user_info = session.get('user_info')
-    if not user_info:
-        print(f"❌ No user_info in session")
-        return jsonify({'error': 'Not authenticated'}), 401
-    
-    print(f"✅ User authenticated: {user_info.get('email')}")
-    return jsonify({
-        'id': user_info.get('id'),
-        'email': user_info.get('email'),
-        'name': user_info.get('name'),
-        'picture': user_info.get('picture')
-    })
+@app.route('/api/user-limit-status', methods=['GET'])
+def get_user_limit_status():
+    """Get current user count and limit status"""
+    try:
+        current_count = UserService.get_total_user_count()
+        is_registration_open = UserService.is_user_registration_allowed(MAX_FREE_USERS)
+        
+        return jsonify({
+            'current_users': current_count,
+            'max_users': MAX_FREE_USERS,
+            'is_registration_open': is_registration_open,
+            'remaining_slots': max(0, MAX_FREE_USERS - current_count),
+            'message': f"{'Open' if is_registration_open else 'Closed'} for registration - {current_count}/{MAX_FREE_USERS} users"
+        })
+    except Exception as e:
+        print(f"Error getting user limit status: {e}")
+        return jsonify({'error': 'Failed to get user limit status'}), 500
 
-@app.route('/auth/logout')
-def logout():
-    """Logout user and clear session"""
-    session.clear()
-    return jsonify({'message': 'Logged out successfully'})
-
-# Keep other existing routes for compatibility
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    email_user = os.getenv("EMAIL_USER", "NOT SET")
-    display_name = os.getenv("EMAIL_DISPLAY_NAME", "Parva")
-    from_address = f"{display_name} <{email_user}>" if display_name and email_user != "NOT SET" else email_user
-    
-    return jsonify({
-        'status': 'healthy', 
-        'email_configured': bool(os.getenv("EMAIL_USER") and os.getenv("EMAIL_PASSWORD")),
-        'email_user': email_user,
-        'email_display_name': display_name,
-        'from_address': from_address,
-        'email_host': os.getenv("EMAIL_HOST", "NOT SET"),
-        'email_port': os.getenv("EMAIL_PORT", "NOT SET")
-    })
+@app.route('/api/admin/users', methods=['GET'])
+def get_all_users():
+    """Admin endpoint to view all users (for monitoring)"""
+    try:
+        # In production, you'd want proper admin authentication here
+        db = get_db_session()
+        try:
+            users = db.query(User).order_by(User.created_at.desc()).all()
+            user_list = []
+            for user in users:
+                user_list.append({
+                    'id': user.id,
+                    'email': user.email,
+                    'name': user.name,
+                    'is_google_user': user.is_google_user,
+                    'created_at': user.created_at.isoformat() if user.created_at else None,
+                    'updated_at': user.updated_at.isoformat() if user.updated_at else None
+                })
+            
+            return jsonify({
+                'total_users': len(user_list),
+                'users': user_list
+            })
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"Error getting all users: {e}")
+        return jsonify({'error': 'Failed to get users'}), 500
 
 if __name__ == '__main__':
     print("🚀 Starting InMailer Backend with Database...")

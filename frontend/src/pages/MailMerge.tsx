@@ -89,8 +89,15 @@ const MailMerge: React.FC = () => {
           
           console.log('Template deleted successfully');
         } else {
-          console.error('Failed to delete template');
-          alert('Failed to delete template. Please try again.');
+          // Get detailed error message from backend
+          const errorData = await response.json();
+          console.error('Failed to delete template:', errorData);
+          
+          if (errorData.details) {
+            alert(`Failed to delete template: ${errorData.error}\n\n${errorData.details}`);
+          } else {
+            alert(`Failed to delete template: ${errorData.error || 'Please try again.'}`);
+          }
         }
       } catch (error) {
         console.error('Error deleting template:', error);
@@ -203,16 +210,67 @@ const MailMerge: React.FC = () => {
       if (response.ok) {
         await response.json(); // Consume response without assigning to unused variable
         alert(`Successfully processed ${contacts.length} emails!`);
-        navigate('/');
+        navigate('/dashboard');
       } else {
         const error = await response.json();
-        alert(`Error sending emails: ${error.error}`);
+        
+        // Handle specific credential errors with better user guidance
+        if (error.action === 'reauth_required' || error.action === 'sign_in_required') {
+          const message = `Authentication Error: ${error.error}\n\n${error.details || ''}\n\nPlease sign out and sign in again to refresh your Gmail access.`;
+          alert(message);
+          
+          // Provide guidance for re-authentication
+          console.log('Credential issue detected. User should sign out and sign in again.');
+        } else {
+          alert(`Error sending emails: ${error.error}`);
+        }
       }
     } catch (error) {
       console.error('Error sending emails:', error);
       alert('Error sending emails. Please check if the backend server is running.');
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const checkCredentialStatus = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/validate-credentials`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.valid) {
+          alert(`✅ Gmail access is working!\n\nEmail: ${data.user_email}\nStatus: ${data.message}`);
+        } else {
+          alert(`❌ Gmail access issue detected:\n\n${data.error}\n\nAction needed: ${data.action}\n\nPlease sign out and sign in again.`);
+        }
+      } else {
+        alert('Failed to check credential status. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error checking credential status:', error);
+      alert('Error checking credential status. Please try again.');
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        alert('Successfully signed out. Please sign in again to refresh your Gmail access.');
+        // Redirect to sign-in page
+        window.location.href = '/signin';
+      } else {
+        alert('Failed to sign out. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error signing out:', error);
+      alert('Error signing out. Please try again.');
     }
   };
 
@@ -239,33 +297,23 @@ const MailMerge: React.FC = () => {
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-6xl mx-auto px-4">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <button
-            onClick={() => navigate('/')}
-            className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <h1 className="text-3xl font-bold text-gray-900">InMailer</h1>
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h1 className="text-3xl font-bold text-gray-900">InMailer</h1>
+          </div>
+          
+
         </div>
 
-        {/* Sender Name Information */}
-        <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0">
-              <svg className="w-5 h-5 text-green-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-medium text-green-800">How Sender Name Works</h3>
-              <p className="text-sm text-green-700 mt-1">
-                Your emails will show your name from the database as the sender, but they are sent from your authenticated Gmail account. 
-                This is a Gmail API limitation - the actual sending account cannot be changed, only the display name.
-              </p>
-            </div>
-          </div>
-        </div>
+
+
+
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Left Column - Upload & Template Selection */}
