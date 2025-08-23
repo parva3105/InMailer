@@ -38,7 +38,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   // Configure axios defaults
-  axios.defaults.baseURL = 'http://localhost:5000';
+  axios.defaults.baseURL = process.env.REACT_APP_API_URL || 'https://inmailer.onrender.com';
   axios.defaults.withCredentials = true; // Important for sending cookies with requests
 
   const signup = async (email: string, password: string, name: string) => {
@@ -142,7 +142,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     // Set axios base URL from environment variable
-    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+    const apiUrl = process.env.REACT_APP_API_URL || 'https://inmailer.onrender.com';
     axios.defaults.baseURL = apiUrl;
     
     // Check if user is already authenticated

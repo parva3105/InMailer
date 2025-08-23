@@ -101,3 +101,7 @@ check_user_limit.py
 *.temp
 *.bak
 *.backup
+
+
+setup_production_env_vars.md
+PRODUCTION_SETUP_GUIDE.md

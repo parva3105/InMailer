@@ -28,7 +28,7 @@ load_dotenv()
 # OAuth Configuration
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
-GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5000/auth/google/callback')
+GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'https://inmailer.onrender.com/auth/google/callback')
 
 # User limit configuration
 MAX_FREE_USERS = int(os.getenv('MAX_FREE_USERS', '50'))
@@ -482,28 +482,45 @@ def create_app():
     app = Flask(__name__)
     
     # Configure Flask app
-    app.secret_key = os.getenv('FLASK_SECRET_KEY', 'inmailer-secret-key-change-in-production')
+    app.secret_key = os.getenv('SECRET_KEY', 'inmailer-secret-key-change-in-production')
     
     # Enhanced session configuration for better reliability
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
-    app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+    
+    # Production vs Development session settings
+    is_production = os.getenv('FLASK_ENV') == 'production'
+    
+    if is_production:
+        # Production settings with HTTPS
+        app.config['SESSION_COOKIE_SECURE'] = True  # Require HTTPS in production
+        app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Required for cross-origin cookies
+        app.config['SESSION_COOKIE_DOMAIN'] = None  # Let browser handle domain
+    else:
+        # Development settings
+        app.config['SESSION_COOKIE_SECURE'] = False  # Allow HTTP in development
+        app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+        app.config['SESSION_COOKIE_DOMAIN'] = None  # Allow localhost
+    
     app.config['SESSION_COOKIE_HTTPONLY'] = True
-    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-    app.config['SESSION_COOKIE_DOMAIN'] = None  # Allow localhost
     
     print("📁 Using enhanced Flask sessions for better reliability")
     print(f"🔑 Secret key configured: {'Yes' if app.secret_key != 'inmailer-secret-key-change-in-production' else 'No (using default)'}")
     
     # CORS configuration with specific settings for sessions
+    cors_origins = ['https://inmailer.vercel.app']
+    
+    # Add localhost origins only in development
+    if os.getenv('FLASK_ENV') != 'production':
+        cors_origins.extend([
+            'http://localhost:3000', 
+            'http://localhost:3001',
+            'http://127.0.0.1:3000', 
+            'http://127.0.0.1:3001'
+        ])
+    
     CORS(app, 
          supports_credentials=True,
-         origins=[
-        'http://localhost:3000', 
-        'http://localhost:3001', 
-        'http://127.0.0.1:3000', 
-        'http://127.0.0.1:3001',
-        'https://inmailer.vercel.app'
-    ],
+         origins=cors_origins,
          allow_headers=['Content-Type', 'Authorization', 'X-Requested-With'],
          methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
          expose_headers=['Set-Cookie'],
@@ -513,7 +530,14 @@ def create_app():
     @app.after_request
     def after_request(response):
         origin = request.headers.get('Origin')
-        if origin in ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001', 'https://inmailer.vercel.app']:
+        # Allow production frontend and localhost for development
+        allowed_origins = ['https://inmailer.vercel.app']
+        
+        # Add localhost origins only in development
+        if os.getenv('FLASK_ENV') != 'production':
+            allowed_origins.extend(['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001'])
+        
+        if origin in allowed_origins:
             response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Access-Control-Allow-Credentials'] = 'true'
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
@@ -1902,7 +1926,7 @@ def google_callback():
         print(f"✅ Session stored: {list(session.keys())}")
         
         # Redirect to frontend after successful OAuth
-        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3001')
+        frontend_url = os.getenv('FRONTEND_URL', 'https://inmailer.vercel.app')
         return redirect(f"{frontend_url}/auth/success?email={user_info.get('email')}&name={user_info.get('name')}")
         
     except Exception as e:

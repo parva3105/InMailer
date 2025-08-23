@@ -72,7 +72,7 @@ const SignUp: React.FC = () => {
   };
 
   const handleGoogleSignUp = () => {
-    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+    const apiUrl = process.env.REACT_APP_API_URL || 'https://inmailer.onrender.com';
     window.location.href = `${apiUrl}/auth/google`;
   };
 
