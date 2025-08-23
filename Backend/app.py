@@ -391,7 +391,13 @@ def create_app():
     # CORS configuration with specific settings for sessions
     CORS(app, 
          supports_credentials=True,
-         origins=['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001'],
+         origins=[
+        'http://localhost:3000', 
+        'http://localhost:3001', 
+        'http://127.0.0.1:3000', 
+        'http://127.0.0.1:3001',
+        'https://inmailer.vercel.app'
+    ],
          allow_headers=['Content-Type', 'Authorization'],
          methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
     
@@ -1161,7 +1167,8 @@ def google_callback():
         print(f"✅ Session stored: {list(session.keys())}")
         
         # Redirect to frontend after successful OAuth
-        return redirect(f"http://localhost:3001/auth/success?email={user_info.get('email')}&name={user_info.get('name')}")
+        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3001')
+        return redirect(f"{frontend_url}/auth/success?email={user_info.get('email')}&name={user_info.get('name')}")
         
     except Exception as e:
         print(f"Error in OAuth callback: {e}")

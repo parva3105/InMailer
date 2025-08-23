@@ -497,7 +497,13 @@ def create_app():
     # CORS configuration with specific settings for sessions
     CORS(app, 
          supports_credentials=True,
-         origins=['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001'],
+         origins=[
+        'http://localhost:3000', 
+        'http://localhost:3001', 
+        'http://127.0.0.1:3000', 
+        'http://127.0.0.1:3001',
+        'https://inmailer.vercel.app'
+    ],
          allow_headers=['Content-Type', 'Authorization'],
          methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
     
