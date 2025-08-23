@@ -15,7 +15,10 @@ logger = logging.getLogger(__name__)
 # Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./inmailer.db')
 
-logger.info(f"🔍 Database URL: {DATABASE_URL[:50]}..." if len(DATABASE_URL) > 50 else f"🔍 Database URL: {DATABASE_URL}")
+logger.info(f"🔍 Original DATABASE_URL: {DATABASE_URL[:50]}..." if len(DATABASE_URL) > 50 else f"🔍 Original DATABASE_URL: {DATABASE_URL}")
+
+# Flag to prevent multiple modifications
+_url_modified = False
 
 # For development, use SQLite if no DATABASE_URL is provided
 if DATABASE_URL.startswith('sqlite'):
@@ -34,11 +37,24 @@ else:
     # Handle Neon database connection string
     if 'neon.tech' in DATABASE_URL or 'neon' in DATABASE_URL.lower():
         logger.info("🔍 Detected Neon database, applying special configuration")
-        # Neon requires SSL mode and specific connection parameters
-        if '?' not in DATABASE_URL:
-            DATABASE_URL += '?sslmode=require'
-        else:
-            DATABASE_URL += '&sslmode=require'
+        
+        # Check if SSL mode is already specified and prevent multiple modifications
+        if 'sslmode=' not in DATABASE_URL and not _url_modified:
+            # Add SSL mode only if not already present and not already modified
+            separator = '&' if '?' in DATABASE_URL else '?'
+            DATABASE_URL = f"{DATABASE_URL}{separator}sslmode=require"
+            _url_modified = True
+            logger.info(f"🔍 Added SSL mode to DATABASE_URL: {DATABASE_URL[:50]}...")
+        elif 'sslmode=' in DATABASE_URL:
+            logger.info("🔍 SSL mode already specified in DATABASE_URL")
+            # Log the current SSL mode to debug
+            if 'sslmode=' in DATABASE_URL:
+                ssl_part = DATABASE_URL.split('sslmode=')[1].split('&')[0] if '&' in DATABASE_URL.split('sslmode=')[1] else DATABASE_URL.split('sslmode=')[1]
+                logger.info(f"🔍 Current SSL mode: {ssl_part}")
+        elif _url_modified:
+            logger.info("🔍 DATABASE_URL already modified, skipping SSL mode addition")
+    
+    logger.info(f"🔍 Final DATABASE_URL for engine: {DATABASE_URL[:50]}..." if len(DATABASE_URL) > 50 else f"🔍 Final DATABASE_URL for engine: {DATABASE_URL}")
     
     try:
         engine = create_engine(
@@ -57,6 +73,7 @@ else:
     except Exception as e:
         logger.error(f"❌ Database connection failed: {e}")
         logger.error("❌ Please check your DATABASE_URL and database credentials")
+        logger.error(f"❌ DATABASE_URL used: {DATABASE_URL}")
         raise
 
 # Create session factory
