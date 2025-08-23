@@ -70,6 +70,21 @@ class UserService:
             return user
         finally:
             db.close()
+    
+    @staticmethod
+    def get_total_user_count() -> int:
+        """Get total number of users in the system"""
+        db = get_db_session()
+        try:
+            return db.query(User).count()
+        finally:
+            db.close()
+    
+    @staticmethod
+    def is_user_registration_allowed(max_users: int = 50) -> bool:
+        """Check if new user registration is allowed based on user limit"""
+        current_count = UserService.get_total_user_count()
+        return current_count < max_users
 
 class TemplateService:
     @staticmethod

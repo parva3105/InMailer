@@ -30,6 +30,9 @@ GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5000/auth/google/callback')
 
+# User limit configuration
+MAX_FREE_USERS = int(os.getenv('MAX_FREE_USERS', '50'))
+
 # Gmail API scopes - include openid since Google adds it automatically
 SCOPES = [
     'https://www.googleapis.com/auth/gmail.send',
@@ -1813,15 +1816,28 @@ def google_callback():
         existing_user = UserService.get_user_by_email(user_email)
         
         if not existing_user:
+            # Check if we've reached the user limit
+            if not UserService.is_user_registration_allowed(MAX_FREE_USERS):
+                current_count = UserService.get_total_user_count()
+                print(f"❌ User limit reached! Current users: {current_count}, Max allowed: {MAX_FREE_USERS}")
+                return jsonify({
+                    'error': f'Sorry! We have reached our limit of {MAX_FREE_USERS} free users. Please contact us for premium access.',
+                    'user_limit_reached': True,
+                    'current_users': current_count,
+                    'max_users': MAX_FREE_USERS
+                }), 403
+            
             # Create new user from Google OAuth
             user_name = user_info.get('name', 'Google User')
             print(f"🔍 Creating new user with name: '{user_name}' and email: '{user_email}'")
+            print(f"🔍 Current user count: {UserService.get_total_user_count()}/{MAX_FREE_USERS}")
             user = UserService.create_user(
                 email=user_email,
                 name=user_name,
                 is_google_user=True
             )
             print(f"✅ Created new Google user: {user_email} with name: '{user.name}'")
+            print(f"✅ New user count: {UserService.get_total_user_count()}/{MAX_FREE_USERS}")
         else:
             # Update existing user
             print(f"🔍 Updating existing user: {user_email}")
@@ -1842,6 +1858,53 @@ def google_callback():
         import traceback
         traceback.print_exc()
         return jsonify({'error': 'OAuth callback failed'}), 500
+
+@app.route('/api/user-limit-status', methods=['GET'])
+def get_user_limit_status():
+    """Get current user count and limit status"""
+    try:
+        current_count = UserService.get_total_user_count()
+        is_registration_open = UserService.is_user_registration_allowed(MAX_FREE_USERS)
+        
+        return jsonify({
+            'current_users': current_count,
+            'max_users': MAX_FREE_USERS,
+            'is_registration_open': is_registration_open,
+            'remaining_slots': max(0, MAX_FREE_USERS - current_count),
+            'message': f"{'Open' if is_registration_open else 'Closed'} for registration - {current_count}/{MAX_FREE_USERS} users"
+        })
+    except Exception as e:
+        print(f"Error getting user limit status: {e}")
+        return jsonify({'error': 'Failed to get user limit status'}), 500
+
+@app.route('/api/admin/users', methods=['GET'])
+def get_all_users():
+    """Admin endpoint to view all users (for monitoring)"""
+    try:
+        # In production, you'd want proper admin authentication here
+        db = get_db_session()
+        try:
+            users = db.query(User).order_by(User.created_at.desc()).all()
+            user_list = []
+            for user in users:
+                user_list.append({
+                    'id': user.id,
+                    'email': user.email,
+                    'name': user.name,
+                    'is_google_user': user.is_google_user,
+                    'created_at': user.created_at.isoformat() if user.created_at else None,
+                    'updated_at': user.updated_at.isoformat() if user.updated_at else None
+                })
+            
+            return jsonify({
+                'total_users': len(user_list),
+                'users': user_list
+            })
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"Error getting all users: {e}")
+        return jsonify({'error': 'Failed to get users'}), 500
 
 if __name__ == '__main__':
     print("🚀 Starting InMailer Backend with Database...")
