@@ -35,15 +35,60 @@ const Dashboard: React.FC = () => {
 
   const fetchDashboardStats = async () => {
     try {
-      const response = await fetch('/api/dashboard/stats', {
+      setLoading(true);
+      console.log('🔍 Fetching dashboard stats...');
+      
+      // Use the same endpoint that works for Mail Merge page
+      const url = 'http://localhost:5000/api/templates';
+      console.log('🔍 Making request to:', url);
+      console.log('🔍 Full URL would be:', url);
+      
+      const response = await fetch(url, {
         credentials: 'include'
       });
       
+      console.log('🔍 Response status:', response.status);
+      console.log('🔍 Response headers:', Object.fromEntries(response.headers.entries()));
+      
       if (response.ok) {
-        const data = await response.json();
-        setStats(data);
+        const templates = await response.json();
+        console.log('🔍 Templates response:', templates);
+        console.log('🔍 Template count:', templates.length);
+        
+        // Get email stats separately
+        const emailResponse = await fetch('/api/user/stats', {
+          credentials: 'include'
+        });
+        
+        let emailStats = { sent_emails: 0 };
+        if (emailResponse.ok) {
+          emailStats = await emailResponse.json();
+          console.log('🔍 Email stats response:', emailStats);
+        }
+        
+        // Update stats with template count from templates endpoint
+        const newStats = {
+          template_count: templates.length,
+          emails_sent: emailStats.sent_emails || 0,
+          orphaned_emails: 0 // We'll keep this as 0 for now since it's not critical
+        };
+        
+        console.log('🔍 Setting new stats:', newStats);
+        setStats(newStats);
       } else {
-        console.error('Failed to fetch dashboard stats');
+        console.error('Failed to fetch dashboard stats, status:', response.status);
+        
+        // Get the actual response to see what's being returned
+        try {
+          const responseText = await response.text();
+          console.error('🔍 Response text (first 200 chars):', responseText.substring(0, 200));
+          
+          if (responseText.includes('<!DOCTYPE')) {
+            console.error('❌ Server returned HTML instead of JSON - backend server might not be running or endpoint is wrong');
+          }
+        } catch (e) {
+          console.error('Could not read error response:', e);
+        }
       }
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
@@ -112,7 +157,7 @@ const Dashboard: React.FC = () => {
             Welcome back, {user.name}! 👋
           </h2>
           <p className="text-gray-600">
-            Ready to create amazing email campaigns? Choose what you'd like to do next.
+            You're one Mail away from you're tech breakthrough !
           </p>
         </div>
 
@@ -173,7 +218,7 @@ const Dashboard: React.FC = () => {
         {/* Stats Section */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
                   <FileText className="w-5 h-5 text-blue-600" />
@@ -187,60 +232,38 @@ const Dashboard: React.FC = () => {
                   )}
                 </div>
               </div>
-              <button
-                onClick={fetchDashboardStats}
-                className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-              >
-                Refresh
-              </button>
             </div>
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center">
-                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
-                  <Mail className="w-5 h-5 text-purple-600" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Emails Sent</p>
-                  {loading ? (
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
-                  ) : (
-                    <p className="text-2xl font-bold text-gray-900">{stats.emails_sent}</p>
-                  )}
-                </div>
+            <div className="flex items-center">
+              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
+                <Mail className="w-5 h-6 text-purple-600" />
               </div>
-              <button
-                onClick={fetchDashboardStats}
-                className="text-purple-600 hover:text-purple-700 text-sm font-medium"
-              >
-                Refresh
-              </button>
+              <div>
+                <p className="text-sm font-medium text-gray-600">Emails Sent</p>
+                {loading ? (
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+                ) : (
+                  <p className="text-2xl font-bold text-gray-900">{stats.emails_sent}</p>
+                )}
+              </div>
             </div>
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center">
-                <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center mr-3">
-                  <FileText className="w-5 h-5 text-orange-600" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Orphaned Emails</p>
-                  {loading ? (
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-600"></div>
-                  ) : (
-                    <p className="text-2xl font-bold text-gray-900">{stats.orphaned_emails}</p>
-                  )}
-                </div>
+            <div className="flex items-center mb-3">
+              <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center mr-3">
+                <FileText className="w-5 h-5 text-orange-600" />
               </div>
-              <button
-                onClick={fetchDashboardStats}
-                className="text-orange-600 hover:text-orange-700 text-sm font-medium"
-              >
-                Refresh
-              </button>
+              <div>
+                <p className="text-sm font-medium text-gray-600">Orphaned Emails</p>
+                {loading ? (
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-600"></div>
+                ) : (
+                  <p className="text-2xl font-bold text-gray-900">{stats.orphaned_emails}</p>
+                )}
+              </div>
             </div>
             {!loading && stats.orphaned_emails > 0 && (
               <p className="text-xs text-orange-600 mt-2">
@@ -250,6 +273,24 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       </main>
+      {/* Footer */}
+      <footer className="mt-16 border-t border-gray-200 bg-white">
+         <div className="max-w-6xl mx-auto px-4 py-6">
+           <div className="text-center text-gray-600">
+             <p className="text-sm">
+               © 2024 Made by{' '}
+               <a 
+                 href="https://www.linkedin.com/in/parva3105" 
+                 target="_blank" 
+                 rel="noopener noreferrer"
+                 className="text-blue-600 hover:text-blue-800 font-medium transition-colors underline decoration-blue-300 hover:decoration-blue-600"
+               >
+                 Parva Shah
+               </a>
+             </p>
+           </div>
+         </div>
+       </footer>
     </div>
   );
 };

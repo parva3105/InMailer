@@ -613,7 +613,12 @@ def create_template():
         if not all([template_name, subject, content]):
             return jsonify({'error': 'Missing required fields'}), 400
         
-        # Create template in database
+        # Create template in database with debug logging
+        print(f"🔍 === TEMPLATE CREATION DEBUG ===")
+        print(f"🔍 Creating template for user ID: {user.id}")
+        print(f"🔍 Template name: {template_name}")
+        print(f"🔍 User email: {user_email}")
+        
         template = TemplateService.create_template(
             user_id=user.id,
             name=template_name,
@@ -623,6 +628,10 @@ def create_template():
             attachment_path=attachment_path,
             attachment_name=attachment_name
         )
+        
+        print(f"🔍 Template created with ID: {template.id}")
+        print(f"🔍 Template user_id: {template.user_id}")
+        print(f"🔍 =================================")
         
         # Convert to JSON-serializable format
         template_data = {
@@ -833,11 +842,37 @@ def get_dashboard_stats():
         if not user:
             return jsonify({'error': 'User not found'}), 404
         
-        # Get template count
+        # Get template count with debug logging
+        print(f"🔍 === DASHBOARD STATS DEBUG ===")
+        print(f"🔍 User ID: {user.id}")
+        print(f"🔍 User Email: {user_email}")
+        print(f"🔍 Calling TemplateService.count_user_templates({user.id})")
+        
         template_count = TemplateService.count_user_templates(user.id)
+        print(f"🔍 Template count returned: {template_count}")
+        
+        # DIRECT DATABASE TEST - bypass the service layer
+        print(f"🔍 === DIRECT DATABASE TEST ===")
+        from db.models import Template
+        db = get_db_session()
+        try:
+            direct_count = db.query(Template).filter(Template.user_id == user.id).count()
+            print(f"🔍 Direct database count: {direct_count}")
+            
+            # Get all templates for this user
+            user_templates = db.query(Template).filter(Template.user_id == user.id).all()
+            print(f"🔍 Direct database templates found: {len(user_templates)}")
+            for template in user_templates:
+                print(f"🔍   - Template: {template.name} (ID: {template.id})")
+        finally:
+            db.close()
+        print(f"🔍 =================================")
         
         # Get email count (only sent emails)
+        print(f"🔍 Calling EmailLogService.get_user_stats({user.id})")
         sent_emails = EmailLogService.get_user_stats(user.id)
+        print(f"🔍 Email stats returned: {sent_emails}")
+        print(f"🔍 =================================")
         
         # Count orphaned email logs (emails with deleted templates)
         from db.models import EmailLog
@@ -905,6 +940,76 @@ def upload_template_attachment():
         
     except Exception as e:
         print(f"❌ Error uploading attachment: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/debug/database', methods=['GET'])
+def debug_database():
+    """Debug endpoint to check database state"""
+    try:
+        # Get user from session
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = user_info.get('email')
+        user = UserService.get_user_by_email(user_email)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Get database session and check directly
+        from db.models import Template, User
+        db = get_db_session()
+        try:
+            # Check all users
+            all_users = db.query(User).all()
+            user_list = []
+            for u in all_users:
+                user_list.append({
+                    'id': u.id,
+                    'email': u.email,
+                    'name': u.name
+                })
+            
+            # Check all templates
+            all_templates = db.query(Template).all()
+            template_list = []
+            for t in all_templates:
+                template_list.append({
+                    'id': t.id,
+                    'user_id': t.user_id,
+                    'name': t.name,
+                    'subject': t.subject[:50] + '...' if len(t.subject) > 50 else t.subject
+                })
+            
+            # Check templates for this specific user
+            user_templates = db.query(Template).filter(Template.user_id == user.id).all()
+            user_template_list = []
+            for t in user_templates:
+                user_template_list.append({
+                    'id': t.id,
+                    'name': t.name,
+                    'subject': t.subject[:50] + '...' if len(t.subject) > 50 else t.subject
+                })
+            
+            return jsonify({
+                'current_user': {
+                    'id': user.id,
+                    'email': user.email,
+                    'name': user.name
+                },
+                'all_users': user_list,
+                'all_templates': template_list,
+                'user_templates': user_template_list,
+                'user_template_count': len(user_templates),
+                'total_template_count': len(all_templates)
+            })
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        print(f"❌ Error debugging database: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/debug-csv', methods=['POST'])

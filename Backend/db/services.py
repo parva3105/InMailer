@@ -166,7 +166,32 @@ class TemplateService:
         """Count templates for a specific user"""
         db = get_db_session()
         try:
-            return db.query(Template).filter(Template.user_id == user_id).count()
+            print(f"🔍 === COUNT USER TEMPLATES DEBUG ===")
+            print(f"🔍 User ID: {user_id}")
+            print(f"🔍 Database session: {db}")
+            
+            # Get all templates for debugging
+            all_templates = db.query(Template).all()
+            print(f"🔍 Total templates in database: {len(all_templates)}")
+            
+            # Show template details
+            for template in all_templates:
+                print(f"🔍   - Template ID: {template.id}, User ID: {template.user_id}, Name: {template.name}")
+            
+            # Get filtered templates
+            user_templates = db.query(Template).filter(Template.user_id == user_id).all()
+            print(f"🔍 Templates for user {user_id}: {len(user_templates)}")
+            
+            # Show filtered template details
+            for template in user_templates:
+                print(f"🔍   - Template ID: {template.id}, Name: {template.name}")
+            
+            # Get count
+            count = db.query(Template).filter(Template.user_id == user_id).count()
+            print(f"🔍 Final count returned: {count}")
+            print(f"🔍 =================================")
+            
+            return count
         finally:
             db.close()
 

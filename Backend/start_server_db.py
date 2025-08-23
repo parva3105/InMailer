@@ -11,19 +11,42 @@ from pathlib import Path
 # Add the current directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Load environment variables from .env file
+def load_env():
+    """Load environment variables from .env file"""
+    env_file = Path('.env')
+    if env_file.exists():
+        with open(env_file, 'r') as f:
+            for line in f:
+                if '=' in line and not line.strip().startswith('#'):
+                    key, value = line.strip().split('=', 1)
+                    os.environ[key] = value
+
 def main():
     """Main startup function"""
     print("🚀 Starting InMailer Backend with Database...")
     
     try:
-        # Check if database file exists, if not, run initialization
-        db_file = Path("inmailer.db")
-        if not db_file.exists():
-            print("📊 Database file not found. Running initialization...")
-            
-            # Import and run database initialization
-            from db.init_db import main as init_db_main
-            init_db_main()
+        # Load environment variables
+        load_env()
+        
+        # Check if using PostgreSQL (Neon) or SQLite
+        database_url = os.getenv('DATABASE_URL', '')
+        
+        if database_url.startswith('postgresql://'):
+            print("🌐 Using PostgreSQL database (Neon)")
+            # For PostgreSQL, we don't need to check for local files
+            # The database tables should already exist
+        else:
+            # Check if SQLite database file exists, if not, run initialization
+            db_file = Path("inmailer.db")
+            if not db_file.exists():
+                print("📊 SQLite database file not found. Running initialization...")
+                
+                # Import and run database initialization with no prompts
+                from db.init_db import init_db
+                init_db()
+                print("✅ Database initialized without prompts")
         
         # Import and start the Flask app
         from app_db import app
