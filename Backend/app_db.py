@@ -3,6 +3,7 @@ from flask_cors import CORS
 import os
 import json
 import shutil
+import secrets
 from pathlib import Path
 from datetime import datetime, timedelta
 from mail_merge import parse_template, render_templates, send_via_smtp
@@ -1961,6 +1962,11 @@ def google_callback():
         
         # Force session to be saved and cookie to be set
         session.modified = True
+        session.permanent = True
+        
+        # Ensure session has an ID by accessing it
+        if '_id' not in session:
+            session['_id'] = secrets.token_urlsafe(32)
         
         # Debug session storage
         print(f"🔍 === OAUTH CALLBACK DEBUG ===")
@@ -2015,16 +2021,23 @@ def google_callback():
         # Create response with explicit cookie setting for Mozilla/Safari compatibility
         response = redirect(f"{frontend_url}/auth/success?email={user_info.get('email')}&name={user_info.get('name')}")
         
+        # Get the actual session ID from Flask
+        session_id = request.cookies.get('session')
+        if not session_id:
+            # If no session cookie exists, create one manually
+            import secrets
+            session_id = secrets.token_urlsafe(32)
+        
         # Ensure session cookie is properly set
-        if hasattr(response, 'set_cookie'):
-            response.set_cookie(
-                'session', 
-                session.get('_id', ''),
-                secure=True,
-                httponly=False,  # Allow JavaScript access for debugging
-                samesite='None',
-                path='/'
-            )
+        response.set_cookie(
+            'session', 
+            session_id,
+            secure=True,
+            httponly=False,  # Allow JavaScript access for debugging
+            samesite='None',
+            path='/',
+            max_age=86400  # 24 hours
+        )
         
         return response
         
