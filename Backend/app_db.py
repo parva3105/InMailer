@@ -491,17 +491,21 @@ def create_app():
     is_production = os.getenv('FLASK_ENV') == 'production'
     
     if is_production:
-        # Production settings with HTTPS - Keep original working configuration
+        # Production settings with HTTPS - Enhanced for Mozilla/Safari compatibility
         app.config['SESSION_COOKIE_SECURE'] = True  # Require HTTPS in production
-        app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Keep original working setting
+        app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Required for cross-origin
         app.config['SESSION_COOKIE_DOMAIN'] = None  # Let browser handle domain
+        app.config['SESSION_COOKIE_PATH'] = '/'  # Ensure cookies are accessible
+        app.config['SESSION_COOKIE_HTTPONLY'] = False  # Allow JavaScript access for debugging
     else:
         # Development settings
         app.config['SESSION_COOKIE_SECURE'] = False  # Allow HTTP in development
         app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
         app.config['SESSION_COOKIE_DOMAIN'] = None  # Allow localhost
+        app.config['SESSION_COOKIE_PATH'] = '/'
+        app.config['SESSION_COOKIE_HTTPONLY'] = False  # Allow JavaScript access for debugging
     
-    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    # Remove the conflicting line since we set it above
     
     print("📁 Using enhanced Flask sessions for better reliability")
     print(f"🔑 Secret key configured: {'Yes' if app.secret_key != 'inmailer-secret-key-change-in-production' else 'No (using default)'}")
@@ -1553,6 +1557,25 @@ def debug_browser():
         }
     })
 
+@app.route('/auth/test-session')
+def test_session():
+    """Simple endpoint to test if session cookies are working"""
+    print(f"🔍 /auth/test-session endpoint called")
+    print(f"🔍 Request cookies: {dict(request.cookies)}")
+    print(f"🔍 Session contents: {list(session.keys())}")
+    
+    # Set a test value in session
+    session['test_value'] = 'session_working'
+    session.modified = True
+    
+    return jsonify({
+        'message': 'Session test endpoint',
+        'cookies_received': list(request.cookies.keys()),
+        'session_test_value': session.get('test_value'),
+        'session_id': session.get('_id'),
+        'all_session_keys': list(session.keys())
+    })
+
 @app.route('/auth/logout')
 def logout():
     """Logout user and clear session"""
@@ -1936,6 +1959,9 @@ def google_callback():
             'scopes': credentials.scopes
         }
         
+        # Force session to be saved and cookie to be set
+        session.modified = True
+        
         # Debug session storage
         print(f"🔍 === OAUTH CALLBACK DEBUG ===")
         print(f"🔍 Session ID after storing: {session.get('_id', 'No ID')}")
@@ -1985,7 +2011,22 @@ def google_callback():
         
         # Redirect to frontend after successful OAuth
         frontend_url = os.getenv('FRONTEND_URL', 'https://inmailer.vercel.app')
-        return redirect(f"{frontend_url}/auth/success?email={user_info.get('email')}&name={user_info.get('name')}")
+        
+        # Create response with explicit cookie setting for Mozilla/Safari compatibility
+        response = redirect(f"{frontend_url}/auth/success?email={user_info.get('email')}&name={user_info.get('name')}")
+        
+        # Ensure session cookie is properly set
+        if hasattr(response, 'set_cookie'):
+            response.set_cookie(
+                'session', 
+                session.get('_id', ''),
+                secure=True,
+                httponly=False,  # Allow JavaScript access for debugging
+                samesite='None',
+                path='/'
+            )
+        
+        return response
         
     except Exception as e:
         print(f"Error in OAuth callback: {e}")
