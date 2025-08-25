@@ -491,17 +491,15 @@ def create_app():
     is_production = os.getenv('FLASK_ENV') == 'production'
     
     if is_production:
-        # Production settings with HTTPS - More compatible with Mozilla/Safari
+        # Production settings with HTTPS - Keep original working configuration
         app.config['SESSION_COOKIE_SECURE'] = True  # Require HTTPS in production
-        app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # More compatible than 'None'
+        app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Keep original working setting
         app.config['SESSION_COOKIE_DOMAIN'] = None  # Let browser handle domain
-        app.config['SESSION_COOKIE_PATH'] = '/'  # Ensure cookies are accessible
     else:
         # Development settings
         app.config['SESSION_COOKIE_SECURE'] = False  # Allow HTTP in development
         app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
         app.config['SESSION_COOKIE_DOMAIN'] = None  # Allow localhost
-        app.config['SESSION_COOKIE_PATH'] = '/'
     
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     
