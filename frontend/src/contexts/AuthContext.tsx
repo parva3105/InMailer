@@ -101,8 +101,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       // First try to check if we have a backend session (for OAuth users)
       try {
-        const response = await axios.get('/auth/user', { withCredentials: true });
+        console.log('🔍 Checking backend session...');
+        const response = await axios.get('/auth/user', { 
+          withCredentials: true,
+          timeout: 10000 // 10 second timeout
+        });
         if (response.data && response.data.email) {
+          console.log('✅ Backend session found:', response.data.email);
           // We have a backend session, create a local session
           const user = {
             id: response.data.id || 'oauth_user',
@@ -114,25 +119,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           setIsLoading(false);
           return;
         }
-      } catch (backendError) {
-        console.log('No backend session found, checking local token...');
+      } catch (backendError: any) {
+        console.log('⚠️ Backend session check failed:', backendError.message);
+        if (backendError.response?.status === 401) {
+          console.log('❌ User not authenticated in backend session');
+        }
         // No backend session, continue to check local token
       }
 
       // Check local session token
       const token = localStorage.getItem('sessionToken');
       if (!token) {
+        console.log('❌ No local session token found');
         setIsLoading(false);
         return;
       }
 
+      console.log('🔍 Checking local session token...');
       setSessionToken(token);
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
       const response = await axios.get('/api/auth/session');
       setUser(response.data.user);
-    } catch (error) {
-      console.error('Session check failed:', error);
+    } catch (error: any) {
+      console.error('❌ Session check failed:', error.message);
       localStorage.removeItem('sessionToken');
       delete axios.defaults.headers.common['Authorization'];
     } finally {

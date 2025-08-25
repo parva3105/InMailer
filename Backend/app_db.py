@@ -491,15 +491,17 @@ def create_app():
     is_production = os.getenv('FLASK_ENV') == 'production'
     
     if is_production:
-        # Production settings with HTTPS
+        # Production settings with HTTPS - More compatible with Mozilla/Safari
         app.config['SESSION_COOKIE_SECURE'] = True  # Require HTTPS in production
-        app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Required for cross-origin cookies
+        app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # More compatible than 'None'
         app.config['SESSION_COOKIE_DOMAIN'] = None  # Let browser handle domain
+        app.config['SESSION_COOKIE_PATH'] = '/'  # Ensure cookies are accessible
     else:
         # Development settings
         app.config['SESSION_COOKIE_SECURE'] = False  # Allow HTTP in development
         app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
         app.config['SESSION_COOKIE_DOMAIN'] = None  # Allow localhost
+        app.config['SESSION_COOKIE_PATH'] = '/'
     
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     
@@ -521,9 +523,9 @@ def create_app():
     CORS(app, 
          supports_credentials=True,
          origins=cors_origins,
-         allow_headers=['Content-Type', 'Authorization', 'X-Requested-With'],
+         allow_headers=['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie'],
          methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-         expose_headers=['Set-Cookie'],
+         expose_headers=['Set-Cookie', 'Access-Control-Allow-Credentials'],
          max_age=3600)
     
     # Add CORS headers manually to ensure they're set
@@ -541,7 +543,8 @@ def create_app():
             response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Access-Control-Allow-Credentials'] = 'true'
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Cookie'
+        response.headers['Access-Control-Expose-Headers'] = 'Set-Cookie, Access-Control-Allow-Credentials'
         return response
     
     # Initialize database and templates when app is created
@@ -1494,6 +1497,62 @@ def get_user():
         'email': user_info.get('email'),
         'name': user_info.get('name'),
         'picture': user_info.get('picture')
+    })
+
+@app.route('/auth/session-status')
+def get_session_status():
+    """Get detailed session status for debugging"""
+    print(f"🔍 /auth/session-status endpoint called")
+    print(f"🔍 Request origin: {request.headers.get('Origin')}")
+    print(f"🔍 Request cookies: {dict(request.cookies)}")
+    print(f"🔍 Session contents: {list(session.keys())}")
+    print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
+    
+    return jsonify({
+        'has_session': '_id' in session,
+        'session_keys': list(session.keys()),
+        'has_user_info': 'user_info' in session,
+        'has_credentials': 'credentials' in session,
+        'cookies_received': list(request.cookies.keys()),
+        'origin': request.headers.get('Origin'),
+        'user_agent': request.headers.get('User-Agent')
+    })
+
+@app.route('/auth/debug-browser')
+def debug_browser():
+    """Debug endpoint specifically for browser compatibility issues"""
+    print(f"🔍 /auth/debug-browser endpoint called")
+    print(f"🔍 Request origin: {request.headers.get('Origin')}")
+    print(f"🔍 Request cookies: {dict(request.cookies)}")
+    print(f"🔍 User agent: {request.headers.get('User-Agent')}")
+    print(f"🔍 Accept headers: {request.headers.get('Accept')}")
+    print(f"🔍 Accept-Language: {request.headers.get('Accept-Language')}")
+    
+    # Check if this looks like Mozilla or Safari
+    user_agent = request.headers.get('User-Agent', '').lower()
+    is_mozilla = 'firefox' in user_agent
+    is_safari = 'safari' in user_agent and 'chrome' not in user_agent
+    
+    return jsonify({
+        'browser_detected': {
+            'is_mozilla': is_mozilla,
+            'is_safari': is_safari,
+            'user_agent': request.headers.get('User-Agent')
+        },
+        'cookies': {
+            'total_cookies': len(request.cookies),
+            'cookie_names': list(request.cookies.keys()),
+            'session_cookie': 'session' in request.cookies
+        },
+        'headers': {
+            'origin': request.headers.get('Origin'),
+            'referer': request.headers.get('Referer'),
+            'accept': request.headers.get('Accept')
+        },
+        'session_status': {
+            'has_session': '_id' in session,
+            'session_keys': list(session.keys())
+        }
     })
 
 @app.route('/auth/logout')

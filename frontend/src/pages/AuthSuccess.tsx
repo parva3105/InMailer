@@ -40,13 +40,58 @@ const AuthSuccess: React.FC = () => {
         console.log('⏳ Final wait for session...');
         await new Promise(resolve => setTimeout(resolve, 1000));
         
+        // Additional check for Mozilla/Safari compatibility
+        console.log('🔍 Additional browser compatibility check...');
+        try {
+          const sessionStatus = await fetch('https://inmailer.onrender.com/auth/session-status', {
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          });
+          const statusData = await sessionStatus.json();
+          console.log('🔍 Session status:', statusData);
+        } catch (statusError) {
+          console.log('⚠️ Session status check failed:', statusError);
+        }
+        
         // Redirect to dashboard
         console.log('🚀 Redirecting to dashboard...');
-        navigate('/dashboard', { replace: true });
+        
+        // For Mozilla/Safari compatibility, try to ensure session is established
+        try {
+          // Final session verification before redirect
+          const finalCheck = await fetch('https://inmailer.onrender.com/auth/user', {
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          });
+          
+          if (finalCheck.ok) {
+            console.log('✅ Final session verification successful');
+            navigate('/dashboard', { replace: true });
+          } else {
+            console.log('⚠️ Final session verification failed, redirecting anyway...');
+            navigate('/dashboard', { replace: true });
+          }
+        } catch (finalError) {
+          console.log('⚠️ Final session check failed, redirecting anyway...', finalError);
+          navigate('/dashboard', { replace: true });
+        }
         
       } catch (err: any) {
         console.error('❌ OAuth processing error:', err);
-        setError('Failed to complete authentication. Please try again.');
+        
+        // Check if it's a browser-specific issue
+        const isMozilla = navigator.userAgent.includes('Firefox');
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        
+        if (isMozilla || isSafari) {
+          setError('Browser compatibility issue detected. Please try refreshing the page or check if cookies are enabled.');
+        } else {
+          setError('Failed to complete authentication. Please try again.');
+        }
       } finally {
         setIsProcessing(false);
       }
