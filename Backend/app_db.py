@@ -492,19 +492,15 @@ def create_app():
     is_production = os.getenv('FLASK_ENV') == 'production'
     
     if is_production:
-        # Production settings with HTTPS - Enhanced for Mozilla/Safari compatibility
+        # Production settings with HTTPS - Simple and safe configuration
         app.config['SESSION_COOKIE_SECURE'] = True  # Require HTTPS in production
         app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Required for cross-origin
         app.config['SESSION_COOKIE_DOMAIN'] = None  # Let browser handle domain
-        app.config['SESSION_COOKIE_PATH'] = '/'  # Ensure cookies are accessible
-        app.config['SESSION_COOKIE_HTTPONLY'] = False  # Allow JavaScript access for debugging
     else:
         # Development settings
         app.config['SESSION_COOKIE_SECURE'] = False  # Allow HTTP in development
         app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
         app.config['SESSION_COOKIE_DOMAIN'] = None  # Allow localhost
-        app.config['SESSION_COOKIE_PATH'] = '/'
-        app.config['SESSION_COOKIE_HTTPONLY'] = False  # Allow JavaScript access for debugging
     
     # Remove the conflicting line since we set it above
     
@@ -1960,13 +1956,12 @@ def google_callback():
             'scopes': credentials.scopes
         }
         
-        # Force session to be saved and cookie to be set
+        # Force session to be saved
         session.modified = True
-        session.permanent = True
         
-        # Ensure session has an ID by accessing it
-        if '_id' not in session:
-            session['_id'] = secrets.token_urlsafe(32)
+        # Ensure session is properly initialized for Mozilla/Safari
+        if not session.get('_id'):
+            session['_id'] = 'oauth_session'
         
         # Debug session storage
         print(f"🔍 === OAUTH CALLBACK DEBUG ===")
@@ -2018,28 +2013,9 @@ def google_callback():
         # Redirect to frontend after successful OAuth
         frontend_url = os.getenv('FRONTEND_URL', 'https://inmailer.vercel.app')
         
-        # Create response with explicit cookie setting for Mozilla/Safari compatibility
-        response = redirect(f"{frontend_url}/auth/success?email={user_info.get('email')}&name={user_info.get('name')}")
-        
-        # Get the actual session ID from Flask
-        session_id = request.cookies.get('session')
-        if not session_id:
-            # If no session cookie exists, create one manually
-            import secrets
-            session_id = secrets.token_urlsafe(32)
-        
-        # Ensure session cookie is properly set
-        response.set_cookie(
-            'session', 
-            session_id,
-            secure=True,
-            httponly=False,  # Allow JavaScript access for debugging
-            samesite='None',
-            path='/',
-            max_age=86400  # 24 hours
-        )
-        
-        return response
+        # Redirect to frontend after successful OAuth
+        frontend_url = os.getenv('FRONTEND_URL', 'https://inmailer.vercel.app')
+        return redirect(f"{frontend_url}/auth/success?email={user_info.get('email')}&name={user_info.get('name')}")
         
     except Exception as e:
         print(f"Error in OAuth callback: {e}")
