@@ -185,8 +185,23 @@ const LandingPage: React.FC = () => {
       <footer className="border-t border-gray-200 bg-white">
         <div className="max-w-6xl mx-auto px-4 py-6">
           <div className="text-center text-gray-600">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
+              <a 
+                href="/terms-of-service" 
+                className="text-sm text-gray-600 hover:text-blue-600 transition-colors underline decoration-gray-300 hover:decoration-blue-600"
+              >
+                Terms of Service
+              </a>
+              <span className="hidden sm:block text-gray-400">•</span>
+              <a 
+                href="/privacy-policy" 
+                className="text-sm text-gray-600 hover:text-blue-600 transition-colors underline decoration-gray-300 hover:decoration-blue-600"
+              >
+                Privacy Policy
+              </a>
+            </div>
             <p className="text-sm">
-              © 2024 Made by{' '}
+              © 2025 Made by{' '}
               <a 
                 href="https://www.linkedin.com/in/parva3105" 
                 target="_blank" 
