@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Mail, Upload, FileText, LogIn, UserPlus, Send, BarChart3, Users, Zap } from 'lucide-react';
+import { Mail, Upload, FileText, LogIn, UserPlus, Send, Users, Zap } from 'lucide-react';
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();

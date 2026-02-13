@@ -15,7 +15,7 @@ os.environ.setdefault('FLASK_ENV', 'development')
 os.environ.setdefault('FLASK_DEBUG', '1')
 
 # Import and initialize the database
-from db.init_db import main as init_database
+from db.config import init_db
 from app_db import app
 
 def main():
@@ -25,7 +25,7 @@ def main():
     # Initialize database
     print("📊 Initializing database...")
     try:
-        init_database()
+        init_db()
         print("✅ Database initialized successfully!")
     except Exception as e:
         print(f"❌ Database initialization failed: {e}")
@@ -34,7 +34,7 @@ def main():
     # Start the Flask server
     print("🌐 Starting Flask server...")
     print("📍 Backend will be available at: http://localhost:5000")
-    print("📍 Frontend should run at: http://localhost:3000")
+    print("📍 Frontend should run at: http://localhost:3001")
     print("📍 Health check: http://localhost:5000/api/health")
     print("\n" + "="*50)
     

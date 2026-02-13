@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 import { Mail, AlertCircle } from 'lucide-react';
 
 const SignIn: React.FC = () => {
-  const [error, setError] = useState('');
-  
-  const navigate = useNavigate();
+  const [error] = useState('');
 
   const handleGoogleSignIn = () => {
     const apiUrl = process.env.REACT_APP_API_URL || 'https://inmailer.onrender.com';

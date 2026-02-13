@@ -13,9 +13,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Database configuration
-DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://neondb_owner:npg_AnXwLsk2vyc0@ep-red-block-adl3xcoi-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require')
-
-logger.info(f"🔍 Original DATABASE_URL: {DATABASE_URL[:50]}..." if len(DATABASE_URL) > 50 else f"🔍 Original DATABASE_URL: {DATABASE_URL}")
+DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///inmailer.db')
+logger.info(f"🔍 Database engine target: {'SQLite' if DATABASE_URL.startswith('sqlite') else 'PostgreSQL'}")
 
 # Flag to prevent multiple modifications
 _url_modified = False
@@ -54,7 +53,7 @@ else:
         elif _url_modified:
             logger.info("🔍 DATABASE_URL already modified, skipping SSL mode addition")
     
-    logger.info(f"🔍 Final DATABASE_URL for engine: {DATABASE_URL[:50]}..." if len(DATABASE_URL) > 50 else f"🔍 Final DATABASE_URL for engine: {DATABASE_URL}")
+    logger.info("🔍 PostgreSQL connection URL resolved from environment")
     
     try:
         engine = create_engine(
@@ -73,7 +72,7 @@ else:
     except Exception as e:
         logger.error(f"❌ Database connection failed: {e}")
         logger.error("❌ Please check your DATABASE_URL and database credentials")
-        logger.error(f"❌ DATABASE_URL used: {DATABASE_URL}")
+        logger.error("❌ DATABASE_URL is invalid or unreachable")
         raise
 
 # Create session factory

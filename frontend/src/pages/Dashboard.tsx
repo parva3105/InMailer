@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Mail, Upload, FileText, LogOut, User, Settings } from 'lucide-react';
+import { Mail, Upload, FileText, LogOut, User } from 'lucide-react';
 import axios from 'axios';
 import { getApiUrl, apiEndpoints } from '../config';
 
@@ -39,8 +39,6 @@ const Dashboard: React.FC = () => {
     try {
       setLoading(true);
       console.log('🔍 Fetching dashboard stats...');
-      
-      const apiUrl = getApiUrl('');
       
       // Use the dedicated dashboard stats endpoint
       const dashboardUrl = getApiUrl(apiEndpoints.dashboard);
@@ -142,7 +140,7 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -178,7 +176,7 @@ const Dashboard: React.FC = () => {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Welcome Section */}
         <div className="mb-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
@@ -301,24 +299,40 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       </main>
+      
       {/* Footer */}
-      <footer className="mt-16 border-t border-gray-200 bg-white">
-         <div className="max-w-6xl mx-auto px-4 py-6">
-           <div className="text-center text-gray-600">
-             <p className="text-sm">
-               © 2024 Made by{' '}
-               <a 
-                 href="https://www.linkedin.com/in/parva3105" 
-                 target="_blank" 
-                 rel="noopener noreferrer"
-                 className="text-blue-600 hover:text-blue-800 font-medium transition-colors underline decoration-blue-300 hover:decoration-blue-600"
-               >
-                 Parva Shah
-               </a>
-             </p>
-           </div>
-         </div>
-       </footer>
+      <footer className="border-t border-gray-200 bg-white mt-auto">
+        <div className="max-w-6xl mx-auto px-4 py-6">
+          <div className="text-center text-gray-600">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
+              <a 
+                href="/terms-of-service" 
+                className="text-sm text-gray-600 hover:text-blue-600 transition-colors underline decoration-gray-300 hover:decoration-blue-600"
+              >
+                Terms of Service
+              </a>
+              <span className="hidden sm:block text-gray-400">•</span>
+              <a 
+                href="/privacy-policy" 
+                className="text-sm text-gray-600 hover:text-blue-600 transition-colors underline decoration-gray-300 hover:decoration-blue-600"
+              >
+                Privacy Policy
+              </a>
+            </div>
+            <p className="text-sm">
+              © 2025 Made by{' '}
+              <a 
+                href="https://www.linkedin.com/in/parva3105" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-800 font-medium transition-colors underline decoration-blue-300 hover:decoration-blue-600"
+              >
+                Parva Shah
+              </a>
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 };

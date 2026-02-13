@@ -1,128 +1,96 @@
 #!/usr/bin/env python3
 """
-Test script to verify local development setup
+Local smoke tests for backend setup.
 """
 
-import os
 import sys
 import requests
+import threading
 import time
 from pathlib import Path
 
-# Add the current directory to Python path
+# Ensure Unicode output does not crash on Windows terminals using cp1252.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+# Add Backend/ to import path
 sys.path.insert(0, str(Path(__file__).parent))
 
-def test_imports():
-    """Test if all required modules can be imported"""
-    print("🧪 Testing imports...")
-    
+
+def test_imports() -> bool:
+    print("[TEST] imports")
     try:
-        from app_db import app
-        print("✅ app_db imported successfully")
-        
+        from app_db import app  # noqa: F401
+        from db.config import init_db  # noqa: F401
+        from db.models import User, Template, EmailLog  # noqa: F401
+        from mail_merge import parse_template, render_templates  # noqa: F401
+        print("[OK] imports")
+        return True
+    except Exception as exc:
+        print(f"[FAIL] imports: {exc}")
+        return False
+
+
+def test_database() -> bool:
+    print("[TEST] database init")
+    try:
         from db.config import init_db
-        print("✅ Database config imported successfully")
-        
-        from db.models import User, Template, EmailLog
-        print("✅ Database models imported successfully")
-        
-        from mail_merge import parse_template, render_templates
-        print("✅ Mail merge functions imported successfully")
-        
+        init_db()
+        print("[OK] database init")
         return True
-    except Exception as e:
-        print(f"❌ Import failed: {e}")
+    except Exception as exc:
+        print(f"[FAIL] database init: {exc}")
         return False
 
-def test_database():
-    """Test database initialization"""
-    print("\n📊 Testing database...")
-    
-    try:
-        from db.init_db import main as init_database
-        init_database()
-        print("✅ Database initialized successfully")
-        return True
-    except Exception as e:
-        print(f"❌ Database initialization failed: {e}")
-        return False
 
-def test_server_start():
-    """Test if server can start"""
-    print("\n🌐 Testing server startup...")
-    
+def test_server_health() -> bool:
+    print("[TEST] server health")
     try:
         from app_db import app
-        
-        # Start server in a separate thread for testing
-        import threading
-        import time
-        
+
         def run_server():
-            app.run(host='127.0.0.1', port=5001, debug=False, use_reloader=False)
-        
-        server_thread = threading.Thread(target=run_server, daemon=True)
-        server_thread.start()
-        
-        # Wait for server to start
+            app.run(host="127.0.0.1", port=5001, debug=False, use_reloader=False)
+
+        thread = threading.Thread(target=run_server, daemon=True)
+        thread.start()
         time.sleep(3)
-        
-        # Test health endpoint
-        try:
-            response = requests.get('http://127.0.0.1:5001/api/health', timeout=5)
-            if response.status_code == 200:
-                print("✅ Server started and health check passed")
-                return True
-            else:
-                print(f"❌ Health check failed: {response.status_code}")
-                return False
-        except requests.exceptions.RequestException as e:
-            print(f"❌ Server health check failed: {e}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ Server startup failed: {e}")
+
+        response = requests.get("http://127.0.0.1:5001/api/health", timeout=5)
+        if response.status_code == 200:
+            print("[OK] server health")
+            return True
+        print(f"[FAIL] server health: status {response.status_code}")
         return False
+    except Exception as exc:
+        print(f"[FAIL] server health: {exc}")
+        return False
+
 
 def main():
-    """Run all tests"""
-    print("🚀 InMailer Local Development Test Suite")
-    print("=" * 50)
-    
-    tests = [
-        ("Import Test", test_imports),
-        ("Database Test", test_database),
-        ("Server Test", test_server_start)
+    print("InMailer Local Backend Smoke Tests")
+    print("=" * 40)
+
+    checks = [
+        ("imports", test_imports),
+        ("database", test_database),
+        ("health", test_server_health),
     ]
-    
-    results = []
-    for test_name, test_func in tests:
-        print(f"\n🔍 Running {test_name}...")
-        result = test_func()
-        results.append((test_name, result))
-    
-    print("\n" + "=" * 50)
-    print("📋 Test Results:")
-    
-    all_passed = True
-    for test_name, result in results:
-        status = "✅ PASS" if result else "❌ FAIL"
-        print(f"  {test_name}: {status}")
-        if not result:
-            all_passed = False
-    
-    if all_passed:
-        print("\n🎉 All tests passed! Your local setup is ready.")
-        print("\n📝 Next steps:")
-        print("  1. Run: python start_server_db.py")
-        print("  2. In another terminal, start the frontend")
-        print("  3. Open http://localhost:3000 in your browser")
-    else:
-        print("\n⚠️  Some tests failed. Please check the errors above.")
-        print("\n🔧 Troubleshooting:")
-        print("  1. Make sure all dependencies are installed: pip install -r requirements.txt")
-        print("  2. Check if you have a .env file with proper configuration")
-        print("  3. Ensure no other process is using port 5000")
+
+    passed = True
+    for _, fn in checks:
+        if not fn():
+            passed = False
+
+    print("=" * 40)
+    if passed:
+        print("All checks passed.")
+        return 0
+
+    print("One or more checks failed.")
+    return 1
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

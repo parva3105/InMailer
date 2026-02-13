@@ -28,7 +28,7 @@ npm install
 
 echo.
 echo 🌐 Starting Frontend Server...
-echo Frontend will be available at: http://localhost:3000
+echo Frontend will be available at: http://localhost:3001
 echo Press Ctrl+C to stop the frontend server
 start "InMailer Frontend" cmd /k "npm start"
 
@@ -36,7 +36,7 @@ echo.
 echo ✅ Both servers are starting up!
 echo.
 echo 📍 Backend:  http://localhost:5000
-echo 📍 Frontend: http://localhost:3000
+echo 📍 Frontend: http://localhost:3001
 echo 📍 Health:   http://localhost:5000/api/health
 echo.
 echo Press any key to exit this launcher...

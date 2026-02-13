@@ -233,47 +233,6 @@ const MailMerge: React.FC = () => {
     }
   };
 
-  const checkCredentialStatus = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/validate-credentials`, {
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.valid) {
-          alert(`✅ Gmail access is working!\n\nEmail: ${data.user_email}\nStatus: ${data.message}`);
-        } else {
-          alert(`❌ Gmail access issue detected:\n\n${data.error}\n\nAction needed: ${data.action}\n\nPlease sign out and sign in again.`);
-        }
-      } else {
-        alert('Failed to check credential status. Please try again.');
-      }
-    } catch (error) {
-      console.error('Error checking credential status:', error);
-      alert('Error checking credential status. Please try again.');
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/logout`, {
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
-        alert('Successfully signed out. Please sign in again to refresh your Gmail access.');
-        // Redirect to sign-in page
-        window.location.href = '/signin';
-      } else {
-        alert('Failed to sign out. Please try again.');
-      }
-    } catch (error) {
-      console.error('Error signing out:', error);
-      alert('Error signing out. Please try again.');
-    }
-  };
-
   const downloadSampleCSV = () => {
     const sampleData = 'Name,Company,Email\nJohn Doe,Acme Corp,john@acme.com\nJane Smith,Tech Inc,jane@tech.com';
     const blob = new Blob([sampleData], { type: 'text/csv' });
@@ -283,14 +242,6 @@ const MailMerge: React.FC = () => {
     a.download = 'sample_contacts.csv';
     a.click();
     window.URL.revokeObjectURL(url);
-  };
-
-  // Helper function to get contact display info
-  const getContactDisplayInfo = (contact: Contact) => {
-    return {
-      name: contact.Name || contact.name || contact['First Name'] || contact['first_name'] || 'Unknown',
-      email: contact.Email || contact.email || 'No email'
-    };
   };
 
   return (

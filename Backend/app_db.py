@@ -1,19 +1,18 @@
-from flask import Flask, request, jsonify, session, redirect, url_for
-from flask_cors import CORS
+from flask import request, jsonify, session, redirect
 import os
 import json
 import shutil
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 from mail_merge import parse_template, render_templates, send_via_smtp
 import csv
 import tempfile
 from dotenv import load_dotenv
-from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 import requests
+from lib.app_factory import create_app as create_flask_app
+from lib.oauth import create_flow as build_oauth_flow, get_user_info as fetch_user_info
 
 # Import database modules
 from db.config import init_db
@@ -41,9 +40,6 @@ SCOPES = [
     'openid'  # Google automatically adds this scope
 ]
 
-# Store users in memory for sessions (in production, use Redis or similar)
-user_sessions = {}  # Store active sessions
-
 def replace_template_variables(text: str, contact_data: dict) -> str:
     """Replace template variables with contact data values"""
     if not text or not contact_data:
@@ -59,69 +55,73 @@ def replace_template_variables(text: str, contact_data: dict) -> str:
     variable_mapping = {}
     
     for key, value in contact_data.items():
-        if value is not None and str(value).strip():
-            clean_value = str(value).strip()
+        # Handle None and empty values - skip empty values to avoid replacing with empty strings
+        if value is None:
+            continue
+        clean_value = str(value).strip()
+        if not clean_value:
+            continue
+        
+        # Store the original key-value
+        variable_mapping[key] = clean_value
+        
+        # Store lowercase version
+        variable_mapping[key.lower()] = clean_value
+        
+        # Store uppercase version
+        variable_mapping[key.upper()] = clean_value
+        
+        # Store title case version
+        variable_mapping[key.title()] = clean_value
+        
+        # Store with underscores
+        if ' ' in key:
+            variable_mapping[key.replace(' ', '_')] = clean_value
+            variable_mapping[key.replace(' ', '_').lower()] = clean_value
+            variable_mapping[key.replace(' ', '_').upper()] = clean_value
+            variable_mapping[key.replace(' ', '_').title()] = clean_value
+        
+        # Store with hyphens
+        if ' ' in key:
+            variable_mapping[key.replace(' ', '-')] = clean_value
+            variable_mapping[key.replace(' ', '-').lower()] = clean_value
+            variable_mapping[key.replace(' ', '-').upper()] = clean_value
+            variable_mapping[key.replace(' ', '-').title()] = clean_value
+        
+        # Store underscore variations
+        if '_' in key:
+            variable_mapping[key.replace('_', ' ')] = clean_value
+            variable_mapping[key.replace('_', ' ').lower()] = clean_value
+            variable_mapping[key.replace('_', ' ').upper()] = clean_value
+            variable_mapping[key.replace('_', ' ').title()] = clean_value
             
-            # Store the original key-value
-            variable_mapping[key] = clean_value
+            variable_mapping[key.replace('_', '-')] = clean_value
+            variable_mapping[key.replace('_', '-').lower()] = clean_value
+            variable_mapping[key.replace('_', '-').upper()] = clean_value
+            variable_mapping[key.replace('_', '-').title()] = clean_value
+        
+        # Store hyphen variations
+        if '-' in key:
+            variable_mapping[key.replace('-', ' ')] = clean_value
+            variable_mapping[key.replace('-', ' ').lower()] = clean_value
+            variable_mapping[key.replace('-', ' ').upper()] = clean_value
+            variable_mapping[key.replace('-', ' ').title()] = clean_value
             
-            # Store lowercase version
-            variable_mapping[key.lower()] = clean_value
-            
-            # Store uppercase version
-            variable_mapping[key.upper()] = clean_value
-            
-            # Store title case version
-            variable_mapping[key.title()] = clean_value
-            
-            # Store with underscores
-            if ' ' in key:
-                variable_mapping[key.replace(' ', '_')] = clean_value
-                variable_mapping[key.replace(' ', '_').lower()] = clean_value
-                variable_mapping[key.replace(' ', '_').upper()] = clean_value
-                variable_mapping[key.replace(' ', '_').title()] = clean_value
-            
-            # Store with hyphens
-            if ' ' in key:
-                variable_mapping[key.replace(' ', '-')] = clean_value
-                variable_mapping[key.replace(' ', '-').lower()] = clean_value
-                variable_mapping[key.replace(' ', '-').upper()] = clean_value
-                variable_mapping[key.replace(' ', '-').title()] = clean_value
-            
-            # Store underscore variations
-            if '_' in key:
-                variable_mapping[key.replace('_', ' ')] = clean_value
-                variable_mapping[key.replace('_', ' ').lower()] = clean_value
-                variable_mapping[key.replace('_', ' ').upper()] = clean_value
-                variable_mapping[key.replace('_', ' ').title()] = clean_value
-                
-                variable_mapping[key.replace('_', '-')] = clean_value
-                variable_mapping[key.replace('_', '-').lower()] = clean_value
-                variable_mapping[key.replace('_', '-').upper()] = clean_value
-                variable_mapping[key.replace('_', '-').title()] = clean_value
-            
-            # Store hyphen variations
-            if '-' in key:
-                variable_mapping[key.replace('-', ' ')] = clean_value
-                variable_mapping[key.replace('-', ' ').lower()] = clean_value
-                variable_mapping[key.replace('-', ' ').upper()] = clean_value
-                variable_mapping[key.replace('-', ' ').title()] = clean_value
-                
-                variable_mapping[key.replace('-', '_')] = clean_value
-                variable_mapping[key.replace('-', '_').lower()] = clean_value
-                variable_mapping[key.replace('-', '_').upper()] = clean_value
-                variable_mapping[key.replace('-', '_').title()] = clean_value
-            
-            # Store camelCase variations
-            if ' ' in key or '_' in key or '-' in key:
-                # Convert to camelCase
-                words = key.replace('_', ' ').replace('-', ' ').split()
-                if len(words) > 1:
-                    camel_case = words[0].lower() + ''.join(word.title() for word in words[1:])
-                    variable_mapping[camel_case] = clean_value
-                    variable_mapping[camel_case.lower()] = clean_value
-                    variable_mapping[camel_case.upper()] = clean_value
-                    variable_mapping[camel_case.title()] = clean_value
+            variable_mapping[key.replace('-', '_')] = clean_value
+            variable_mapping[key.replace('-', '_').lower()] = clean_value
+            variable_mapping[key.replace('-', '_').upper()] = clean_value
+            variable_mapping[key.replace('-', '_').title()] = clean_value
+        
+        # Store camelCase variations
+        if ' ' in key or '_' in key or '-' in key:
+            # Convert to camelCase
+            words = key.replace('_', ' ').replace('-', ' ').split()
+            if len(words) > 1:
+                camel_case = words[0].lower() + ''.join(word.title() for word in words[1:])
+                variable_mapping[camel_case] = clean_value
+                variable_mapping[camel_case.lower()] = clean_value
+                variable_mapping[camel_case.upper()] = clean_value
+                variable_mapping[camel_case.title()] = clean_value
     
     print(f"🔍 Created {len(variable_mapping)} variable mappings")
     print(f"🔍 Sample mappings: {dict(list(variable_mapping.items())[:10])}")
@@ -129,7 +129,7 @@ def replace_template_variables(text: str, contact_data: dict) -> str:
     # Find all variable patterns in the text using regex
     import re
     
-    # Pattern 1: ${VariableName} or ${variable_name}
+    # Pattern 1: ${VariableName} or ${variable_name} - matches anything between ${}
     pattern1 = r'\$\{([^}]+)\}'
     matches1 = re.findall(pattern1, text)
     print(f"🔍 Found ${{}} pattern matches: {matches1}")
@@ -143,28 +143,25 @@ def replace_template_variables(text: str, contact_data: dict) -> str:
     all_matches = list(set(matches1 + matches2))
     print(f"🔍 All unique variable matches: {all_matches}")
     
-    # Replace all variables
+    # Replace all variables using regex for more reliable replacement
     for var_name in all_matches:
         # Try to find a match in our variable mapping
         found_match = False
+        replacement_value = None
         
         # Try exact match first
         if var_name in variable_mapping:
-            result = result.replace(f'${{{var_name}}}', variable_mapping[var_name])
-            result = result.replace(f'${var_name}', variable_mapping[var_name])
-            replacements_made.append(f"${var_name} -> {variable_mapping[var_name]}")
+            replacement_value = variable_mapping[var_name]
             found_match = True
-            print(f"✅ Exact match: ${var_name} -> {variable_mapping[var_name]}")
+            print(f"✅ Exact match: ${var_name} -> {replacement_value}")
         
         # Try case-insensitive match
         if not found_match:
             for mapping_key, mapping_value in variable_mapping.items():
                 if mapping_key.lower() == var_name.lower():
-                    result = result.replace(f'${{{var_name}}}', mapping_value)
-                    result = result.replace(f'${var_name}', mapping_value)
-                    replacements_made.append(f"${var_name} -> {mapping_value}")
+                    replacement_value = mapping_value
                     found_match = True
-                    print(f"✅ Case-insensitive match: ${var_name} -> {mapping_value}")
+                    print(f"✅ Case-insensitive match: ${var_name} -> {replacement_value}")
                     break
         
         # Try normalized match (remove spaces, underscores, hyphens)
@@ -173,15 +170,27 @@ def replace_template_variables(text: str, contact_data: dict) -> str:
             for mapping_key, mapping_value in variable_mapping.items():
                 normalized_key = mapping_key.lower().replace(' ', '').replace('_', '').replace('-', '')
                 if normalized_key == normalized_var:
-                    result = result.replace(f'${{{var_name}}}', mapping_value)
-                    result = result.replace(f'${var_name}', mapping_value)
-                    replacements_made.append(f"${var_name} -> {mapping_value}")
+                    replacement_value = mapping_value
                     found_match = True
-                    print(f"✅ Normalized match: ${var_name} -> {mapping_value}")
+                    print(f"✅ Normalized match: ${var_name} -> {replacement_value}")
                     break
         
-        if not found_match:
+        if found_match and replacement_value:
+            # Use regex to replace all occurrences (both ${var} and $var formats)
+            # Escape special regex characters in var_name
+            escaped_var = re.escape(var_name)
+            # Replace ${var_name} format - match exactly ${var_name}
+            pattern1 = re.escape('${') + escaped_var + re.escape('}')
+            result = re.sub(pattern1, replacement_value, result)
+            # Replace $var_name format - match $var_name but ensure it's a complete variable
+            # Use negative lookahead to ensure we don't match if followed by alphanumeric or underscore
+            pattern2 = re.escape('$') + escaped_var + r'(?![a-zA-Z0-9_])'
+            result = re.sub(pattern2, replacement_value, result)
+            replacements_made.append(f"${var_name} -> {replacement_value}")
+        else:
             print(f"⚠️ No match found for variable: ${var_name}")
+            print(f"🔍 Available keys in contact_data: {list(contact_data.keys())}")
+            print(f"🔍 Sample variable_mapping keys: {list(variable_mapping.keys())[:10]}")
     
     # Final debug logging
     if replacements_made:
@@ -286,60 +295,6 @@ def initialize_templates():
             print(f"❌ Error during template migration: {e}")
     
     print("✅ Template initialization complete!")
-
-# OAuth Helper Functions
-def create_flow():
-    """Create OAuth flow for Google authentication"""
-    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
-        raise ValueError("Google OAuth credentials not configured")
-    
-    flow = Flow.from_client_config(
-        {
-            "web": {
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [GOOGLE_REDIRECT_URI]
-            }
-        },
-        scopes=SCOPES
-    )
-    return flow
-
-def get_user_info(credentials):
-    """Get user information from Google"""
-    try:
-        service = build('oauth2', 'v2', credentials=credentials)
-        user_info = service.userinfo().get().execute()
-        return user_info
-    except Exception as e:
-        print(f"Error getting user info: {e}")
-        return None
-
-# Authentication Helper Functions
-def create_user_session(user_id):
-    """Create a new session for user"""
-    import secrets
-    session_token = secrets.token_urlsafe(32)
-    user_sessions[session_token] = {
-        'user_id': user_id,
-        'created_at': datetime.now(),
-        'expires_at': datetime.now() + timedelta(hours=24)
-    }
-    return session_token
-
-def get_user_from_session(session_token):
-    """Get user from session token"""
-    if session_token not in user_sessions:
-        return None
-    
-    session_data = user_sessions[session_token]
-    if datetime.now() > session_data['expires_at']:
-        del user_sessions[session_token]
-        return None
-    
-    return UserService.get_user_by_id(session_data['user_id'])
 
 def send_gmail(credentials, to_email, subject, body, attachment_path=None, attachment_name=None, sender_name=None, user_email=None):
     """Send email using Gmail API"""
@@ -477,80 +432,7 @@ def create_email_message(to_email, subject, body, attachment_path=None, attachme
     raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
     return {'raw': raw_message}
 
-def create_app():
-    """Create and configure the Flask app"""
-    app = Flask(__name__)
-    
-    # Configure Flask app
-    app.secret_key = os.getenv('SECRET_KEY', 'inmailer-secret-key-change-in-production')
-    
-    # Enhanced session configuration for better reliability
-    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
-    
-    # Production vs Development session settings
-    is_production = os.getenv('FLASK_ENV') == 'production'
-    
-    if is_production:
-        # Production settings with HTTPS
-        app.config['SESSION_COOKIE_SECURE'] = True  # Require HTTPS in production
-        app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Required for cross-origin cookies
-        app.config['SESSION_COOKIE_DOMAIN'] = None  # Let browser handle domain
-    else:
-        # Development settings
-        app.config['SESSION_COOKIE_SECURE'] = False  # Allow HTTP in development
-        app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-        app.config['SESSION_COOKIE_DOMAIN'] = None  # Allow localhost
-    
-    app.config['SESSION_COOKIE_HTTPONLY'] = True
-    
-    print("📁 Using enhanced Flask sessions for better reliability")
-    print(f"🔑 Secret key configured: {'Yes' if app.secret_key != 'inmailer-secret-key-change-in-production' else 'No (using default)'}")
-    
-    # CORS configuration with specific settings for sessions
-    cors_origins = ['https://inmailer.vercel.app']
-    
-    # Add localhost origins only in development
-    if os.getenv('FLASK_ENV') != 'production':
-        cors_origins.extend([
-            'http://localhost:3000', 
-            'http://localhost:3001',
-            'http://127.0.0.1:3000', 
-            'http://127.0.0.1:3001'
-        ])
-    
-    CORS(app, 
-         supports_credentials=True,
-         origins=cors_origins,
-         allow_headers=['Content-Type', 'Authorization', 'X-Requested-With'],
-         methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-         expose_headers=['Set-Cookie'],
-         max_age=3600)
-    
-    # Add CORS headers manually to ensure they're set
-    @app.after_request
-    def after_request(response):
-        origin = request.headers.get('Origin')
-        # Allow production frontend and localhost for development
-        allowed_origins = ['https://inmailer.vercel.app']
-        
-        # Add localhost origins only in development
-        if os.getenv('FLASK_ENV') != 'production':
-            allowed_origins.extend(['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001'])
-        
-        if origin in allowed_origins:
-            response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
-        return response
-    
-    # Initialize database and templates when app is created
-    with app.app_context():
-        initialize_templates()
-    
-    return app
-
-app = create_app()
+app = create_flask_app(initialize_templates)
 
 # Database-integrated API endpoints
 @app.route('/api/templates', methods=['GET'])
@@ -1435,6 +1317,84 @@ def send_emails():
         print(f"❌ Error sending emails: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/send-gmail', methods=['POST'])
+def send_test_email():
+    """Send a single test email for the authenticated user."""
+    try:
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+
+        user = UserService.get_user_by_email(user_info.get('email'))
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        data = request.json or {}
+        to_email = (data.get('to_email') or '').strip()
+        subject = (data.get('subject') or 'Test Email from InMailer').strip()
+        body = (data.get('body') or '').strip()
+        attachment_path = (data.get('attachment_path') or '').strip() or None
+
+        if not to_email:
+            return jsonify({'error': 'Recipient email is required'}), 400
+        if not body:
+            return jsonify({'error': 'Email body is required'}), 400
+
+        credentials_data = session.get('credentials')
+        if not credentials_data:
+            return jsonify({
+                'error': 'No Gmail credentials found. Please sign in with Google again.',
+                'action': 'sign_in_required'
+            }), 401
+
+        required_fields = ['token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']
+        missing_fields = [field for field in required_fields if not credentials_data.get(field)]
+        if missing_fields:
+            return jsonify({
+                'error': f'Missing required Gmail credentials: {missing_fields}. Please sign in again.',
+                'action': 'reauth_required',
+                'missing_fields': missing_fields
+            }), 401
+
+        credentials = Credentials(
+            token=credentials_data['token'],
+            refresh_token=credentials_data['refresh_token'],
+            token_uri=credentials_data['token_uri'],
+            client_id=credentials_data['client_id'],
+            client_secret=credentials_data['client_secret'],
+            scopes=credentials_data['scopes']
+        )
+
+        sent_message = send_gmail(
+            credentials=credentials,
+            to_email=to_email,
+            subject=subject,
+            body=body,
+            attachment_path=attachment_path,
+            sender_name=user.name,
+            user_email=user.email
+        )
+
+        if not sent_message:
+            return jsonify({'error': 'Failed to send test email'}), 500
+
+        EmailLogService.create_email_log(
+            user_id=user.id,
+            template_id=None,
+            recipient_email=to_email,
+            subject=subject,
+            status='sent',
+            gmail_message_id=sent_message.get('id')
+        )
+
+        return jsonify({
+            'message': 'Test email sent successfully',
+            'message_id': sent_message.get('id')
+        })
+    except Exception as e:
+        print(f"❌ Error sending test email: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/debug/credentials', methods=['GET'])
 def debug_credentials():
     """Debug endpoint to check what credentials are stored in session"""
@@ -1691,33 +1651,15 @@ def health_check():
 
 # OAuth Helper Functions
 def create_flow():
-    """Create OAuth flow for Google authentication"""
-    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
-        raise ValueError("Google OAuth credentials not configured")
-    
-    flow = Flow.from_client_config(
-        {
-            "web": {
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [GOOGLE_REDIRECT_URI]
-            }
-        },
+    return build_oauth_flow(
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        redirect_uri=GOOGLE_REDIRECT_URI,
         scopes=SCOPES
     )
-    return flow
 
 def get_user_info(credentials):
-    """Get user information from Google"""
-    try:
-        service = build('oauth2', 'v2', credentials=credentials)
-        user_info = service.userinfo().get().execute()
-        return user_info
-    except Exception as e:
-        print(f"Error getting user info: {e}")
-        return None
+    return fetch_user_info(credentials)
 
 # OAuth Routes
 @app.route('/auth/google')
@@ -1988,3 +1930,4 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') == 'development'
     app.run(debug=debug, host='0.0.0.0', port=port)
+

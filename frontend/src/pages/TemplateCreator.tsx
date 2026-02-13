@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Save, Plus, X, Upload, FileText, Trash2 } from 'lucide-react';
 
-const API_BASE_URL = (process.env.REACT_APP_API_URL || 'http://localhost:5000') + '/api';
+const API_BASE_URL = (process.env.REACT_APP_API_URL || 'https://inmailer.onrender.com') + '/api';
 
 const TemplateCreator: React.FC = () => {
   const [templateName, setTemplateName] = useState('');
@@ -90,8 +90,6 @@ const TemplateCreator: React.FC = () => {
     setIsSaving(true);
     
     try {
-      let template;
-      
       if (editMode) {
         // Update existing template
         let response;
@@ -128,8 +126,7 @@ const TemplateCreator: React.FC = () => {
         }
 
         if (response.ok) {
-          const result = await response.json();
-          template = result.template; // Extract template from response
+          await response.json();
         } else {
           const error = await response.json();
           alert(`Error updating template: ${error.error}`);
@@ -171,8 +168,7 @@ const TemplateCreator: React.FC = () => {
         }
 
         if (response.ok) {
-          const result = await response.json();
-          template = result.template;
+          await response.json();
         } else {
           const error = await response.json();
           alert(`Error saving template: ${error.error}`);
