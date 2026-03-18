@@ -15,6 +15,7 @@ class User(Base):
     name = Column(String(255), nullable=False)
     password_hash = Column(String(255), nullable=True)  # Null for Google OAuth users
     is_google_user = Column(Boolean, default=False)
+    oauth_credentials = Column(JSON, nullable=True)  # Persisted OAuth tokens
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     

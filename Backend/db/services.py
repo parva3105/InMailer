@@ -86,6 +86,48 @@ class UserService:
         current_count = UserService.get_total_user_count()
         return current_count < max_users
 
+    @staticmethod
+    def save_oauth_credentials(user_id: int, credentials_dict: dict) -> bool:
+        """Persist OAuth credentials to the database so they survive server restarts"""
+        db = get_db_session()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return False
+            user.oauth_credentials = credentials_dict
+            user.updated_at = datetime.now()
+            db.commit()
+            return True
+        finally:
+            db.close()
+
+    @staticmethod
+    def get_oauth_credentials(user_id: int) -> Optional[dict]:
+        """Retrieve persisted OAuth credentials from the database"""
+        db = get_db_session()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return None
+            return user.oauth_credentials
+        finally:
+            db.close()
+
+    @staticmethod
+    def clear_oauth_credentials(user_id: int) -> bool:
+        """Clear stored OAuth credentials (used during re-auth flow)"""
+        db = get_db_session()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return False
+            user.oauth_credentials = None
+            user.updated_at = datetime.now()
+            db.commit()
+            return True
+        finally:
+            db.close()
+
 class TemplateService:
     @staticmethod
     def create_template(user_id: int, name: str, subject: str, content: str, 

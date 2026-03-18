@@ -90,8 +90,18 @@ def init_db():
     """Initialize database tables"""
     try:
         from .models import Base
+        from sqlalchemy import text, inspect
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Database tables created successfully")
+
+        # Add oauth_credentials column if it doesn't already exist (safe migration)
+        inspector = inspect(engine)
+        existing_columns = [col['name'] for col in inspector.get_columns('users')]
+        if 'oauth_credentials' not in existing_columns:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN oauth_credentials JSON"))
+                conn.commit()
+            logger.info("✅ Added oauth_credentials column to users table")
     except Exception as e:
         logger.error(f"❌ Failed to create database tables: {e}")
         raise
