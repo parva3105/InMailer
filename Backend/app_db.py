@@ -446,13 +446,17 @@ def get_templates():
         
         user_email = user_info.get('email')
         user = UserService.get_user_by_email(user_email)
-        
+
         if not user:
             return jsonify({'error': 'User not found'}), 404
-        
+
+        print(f"🔍 Debug: Looking up templates for DB user.id={user.id}, email={user_email}", flush=True)
+
         # Get user's templates from database
         templates = TemplateService.get_user_templates(user.id)
-        
+
+        print(f"🔍 Debug: Found {len(templates)} templates for user.id={user.id}", flush=True)
+
         # Convert to JSON-serializable format
         templates_data = []
         for template in templates:
