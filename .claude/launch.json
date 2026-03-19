@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Frontend (React)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "port": 3001
+    },
+    {
+      "name": "Backend (Flask)",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["start_server_db.py"],
+      "port": 5000
+    }
+  ]
+}
