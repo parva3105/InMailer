@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc, text
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+from types import SimpleNamespace
 from .models import User, Template, EmailLog
 from .config import get_db_session
 import hashlib
@@ -30,7 +31,7 @@ class UserService:
             db.close()
     
     @staticmethod
-    def get_user_by_email(email: str) -> Optional[User]:
+    def get_user_by_email(email: str):
         """Get user by email using raw SQL to avoid ORM detachment issues"""
         db = get_db_session()
         try:
@@ -41,29 +42,33 @@ class UserService:
             row = result.fetchone()
             if not row:
                 return None
-            # Build a transient User object from raw data (not attached to any session)
-            user = User.__new__(User)
-            user.id = row[0]
-            user.email = row[1]
-            user.name = row[2]
-            user.password_hash = row[3]
-            user.is_google_user = row[4]
-            user.created_at = row[5]
-            user.updated_at = row[6]
-            print(f"🔍 get_user_by_email: raw SQL returned id={row[0]} for email={email}", flush=True)
+            user = SimpleNamespace(
+                id=row[0], email=row[1], name=row[2],
+                password_hash=row[3], is_google_user=row[4],
+                created_at=row[5], updated_at=row[6]
+            )
+            print(f"🔍 get_user_by_email: raw SQL returned id={user.id} for email={email}", flush=True)
             return user
         finally:
             db.close()
 
     @staticmethod
-    def get_user_by_id(user_id: int) -> Optional[User]:
-        """Get user by ID"""
+    def get_user_by_id(user_id: int):
+        """Get user by ID using raw SQL"""
         db = get_db_session()
         try:
-            user = db.query(User).filter(User.id == user_id).first()
-            if user:
-                db.expunge(user)
-            return user
+            result = db.execute(
+                text("SELECT id, email, name, password_hash, is_google_user, created_at, updated_at FROM users WHERE id = :uid LIMIT 1"),
+                {"uid": user_id}
+            )
+            row = result.fetchone()
+            if not row:
+                return None
+            return SimpleNamespace(
+                id=row[0], email=row[1], name=row[2],
+                password_hash=row[3], is_google_user=row[4],
+                created_at=row[5], updated_at=row[6]
+            )
         finally:
             db.close()
     
@@ -173,7 +178,7 @@ class TemplateService:
             db.close()
     
     @staticmethod
-    def get_user_templates(user_id: int) -> List[dict]:
+    def get_user_templates(user_id: int) -> list:
         """Get all templates for a specific user using raw SQL"""
         db = get_db_session()
         try:
@@ -184,31 +189,33 @@ class TemplateService:
             rows = result.fetchall()
             templates = []
             for row in rows:
-                t = Template.__new__(Template)
-                t.id = row[0]
-                t.user_id = row[1]
-                t.name = row[2]
-                t.subject = row[3]
-                t.content = row[4]
-                t.variables = row[5]
-                t.attachment_path = row[6]
-                t.attachment_name = row[7]
-                t.created_at = row[8]
-                t.updated_at = row[9]
-                templates.append(t)
+                templates.append(SimpleNamespace(
+                    id=row[0], user_id=row[1], name=row[2], subject=row[3],
+                    content=row[4], variables=row[5], attachment_path=row[6],
+                    attachment_name=row[7], created_at=row[8], updated_at=row[9]
+                ))
             print(f"🔍 get_user_templates: raw SQL returned {len(templates)} templates for user_id={user_id}", flush=True)
             return templates
         finally:
             db.close()
 
     @staticmethod
-    def get_template_by_id(template_id: int, user_id: int) -> Optional[Template]:
-        """Get a specific template for a user"""
+    def get_template_by_id(template_id: int, user_id: int):
+        """Get a specific template for a user using raw SQL"""
         db = get_db_session()
         try:
-            return db.query(Template).filter(
-                and_(Template.id == template_id, Template.user_id == user_id)
-            ).first()
+            result = db.execute(
+                text("SELECT id, user_id, name, subject, content, variables, attachment_path, attachment_name, created_at, updated_at FROM templates WHERE id = :tid AND user_id = :uid LIMIT 1"),
+                {"tid": template_id, "uid": user_id}
+            )
+            row = result.fetchone()
+            if not row:
+                return None
+            return SimpleNamespace(
+                id=row[0], user_id=row[1], name=row[2], subject=row[3],
+                content=row[4], variables=row[5], attachment_path=row[6],
+                attachment_name=row[7], created_at=row[8], updated_at=row[9]
+            )
         finally:
             db.close()
     
