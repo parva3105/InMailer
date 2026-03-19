@@ -91,17 +91,43 @@ def init_db():
     try:
         from .models import Base
         from sqlalchemy import text, inspect
+
+        inspector = inspect(engine)
+        existing_tables = inspector.get_table_names()
+        logger.info(f"🔍 Existing tables before init: {existing_tables}")
+
+        # Log user count before any changes
+        if 'users' in existing_tables:
+            with engine.connect() as conn:
+                result = conn.execute(text("SELECT COUNT(*) FROM users"))
+                count = result.scalar()
+                logger.info(f"🔍 Users table exists with {count} rows")
+
         Base.metadata.create_all(bind=engine)
-        logger.info("✅ Database tables created successfully")
+        logger.info("✅ Database tables created/verified successfully")
+
+        # Re-check after create_all
+        inspector = inspect(engine)
+        existing_tables_after = inspector.get_table_names()
+        logger.info(f"🔍 Existing tables after init: {existing_tables_after}")
+
+        if 'users' in existing_tables_after:
+            with engine.connect() as conn:
+                result = conn.execute(text("SELECT COUNT(*) FROM users"))
+                count = result.scalar()
+                logger.info(f"🔍 Users table now has {count} rows")
 
         # Add oauth_credentials column if it doesn't already exist (safe migration)
-        inspector = inspect(engine)
         existing_columns = [col['name'] for col in inspector.get_columns('users')]
+        logger.info(f"🔍 Users table columns: {existing_columns}")
         if 'oauth_credentials' not in existing_columns:
-            with engine.connect() as conn:
-                conn.execute(text("ALTER TABLE users ADD COLUMN oauth_credentials JSON"))
-                conn.commit()
-            logger.info("✅ Added oauth_credentials column to users table")
+            try:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN oauth_credentials JSON"))
+                    conn.commit()
+                logger.info("✅ Added oauth_credentials column to users table")
+            except Exception as alter_err:
+                logger.warning(f"⚠️ Could not add oauth_credentials column (may already exist): {alter_err}")
     except Exception as e:
         logger.error(f"❌ Failed to create database tables: {e}")
         raise
