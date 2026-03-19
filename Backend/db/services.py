@@ -34,16 +34,23 @@ class UserService:
         """Get user by email"""
         db = get_db_session()
         try:
-            return db.query(User).filter(User.email == email).first()
+            user = db.query(User).filter(User.email == email).first()
+            if user:
+                # Force-load all attributes before detaching so they survive db.close()
+                db.expunge(user)
+            return user
         finally:
             db.close()
-    
+
     @staticmethod
     def get_user_by_id(user_id: int) -> Optional[User]:
         """Get user by ID"""
         db = get_db_session()
         try:
-            return db.query(User).filter(User.id == user_id).first()
+            user = db.query(User).filter(User.id == user_id).first()
+            if user:
+                db.expunge(user)
+            return user
         finally:
             db.close()
     
@@ -157,10 +164,13 @@ class TemplateService:
         """Get all templates for a specific user"""
         db = get_db_session()
         try:
-            return db.query(Template).filter(Template.user_id == user_id).order_by(desc(Template.updated_at)).all()
+            templates = db.query(Template).filter(Template.user_id == user_id).order_by(desc(Template.updated_at)).all()
+            for t in templates:
+                db.expunge(t)
+            return templates
         finally:
             db.close()
-    
+
     @staticmethod
     def get_template_by_id(template_id: int, user_id: int) -> Optional[Template]:
         """Get a specific template for a user"""
