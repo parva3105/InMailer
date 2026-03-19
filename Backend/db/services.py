@@ -369,7 +369,7 @@ class EmailLogService:
                     'status': log.status,
                     'error_message': log.error_message,
                     'gmail_message_id': log.gmail_message_id,
-                    'sent_at': log.sent_at.isoformat() if log.sent_at else None,
+                    'sent_at': log.sent_at if isinstance(log.sent_at, str) else (log.sent_at.isoformat() if log.sent_at else None),
                     'template_info': {
                         'id': template.id if template else None,
                         'name': template.name if template else 'Template Deleted',

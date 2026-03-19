@@ -4,6 +4,14 @@ import json
 import shutil
 from pathlib import Path
 from datetime import datetime
+
+def safe_isoformat(val):
+    """Convert datetime or string to ISO format string safely."""
+    if val is None:
+        return None
+    if isinstance(val, str):
+        return val
+    return val.isoformat()
 from mail_merge import parse_template, render_templates, send_via_smtp
 import csv
 import tempfile
@@ -468,8 +476,8 @@ def get_templates():
                 'variables': template.variables,
                 'attachment_path': template.attachment_path,
                 'attachment_name': template.attachment_name,
-                'created_at': template.created_at.isoformat() if template.created_at else None,
-                'updated_at': template.updated_at.isoformat() if template.updated_at else None
+                'created_at': safe_isoformat(template.created_at),
+                'updated_at': safe_isoformat(template.updated_at)
             })
         
         print(f"🔍 Debug: Returning {len(templates_data)} templates for user {user_email}")
@@ -574,8 +582,8 @@ def create_template():
             'variables': template.variables,
             'attachment_path': template.attachment_path,
             'attachment_name': template.attachment_name,
-            'created_at': template.created_at.isoformat() if template.created_at else None,
-            'updated_at': template.updated_at.isoformat() if template.updated_at else None
+            'created_at': safe_isoformat(template.created_at),
+            'updated_at': safe_isoformat(template.updated_at)
         }
         
         print(f"✅ Template created successfully: {template_name}")
@@ -682,8 +690,8 @@ def update_template(template_id):
             'variables': template.variables,
             'attachment_path': template.attachment_path,
             'attachment_name': template.attachment_name,
-            'created_at': template.created_at.isoformat() if template.created_at else None,
-            'updated_at': template.updated_at.isoformat() if template.updated_at else None
+            'created_at': safe_isoformat(template.created_at),
+            'updated_at': safe_isoformat(template.updated_at)
         }
         
         print(f"✅ Template updated successfully: {template_name}")
@@ -1923,8 +1931,8 @@ def get_all_users():
                     'email': user.email,
                     'name': user.name,
                     'is_google_user': user.is_google_user,
-                    'created_at': user.created_at.isoformat() if user.created_at else None,
-                    'updated_at': user.updated_at.isoformat() if user.updated_at else None
+                    'created_at': safe_isoformat(user.created_at),
+                    'updated_at': safe_isoformat(user.updated_at)
                 })
             
             return jsonify({
