@@ -1873,10 +1873,11 @@ def google_callback():
         return redirect(f"{frontend_url}/auth/success?email={user_info.get('email')}&name={user_info.get('name')}")
         
     except Exception as e:
-        print(f"Error in OAuth callback: {e}")
-        import traceback
+        import sys, traceback
+        print(f"Error in OAuth callback: {e}", flush=True)
         traceback.print_exc()
-        return jsonify({'error': 'OAuth callback failed'}), 500
+        sys.stderr.flush()
+        return jsonify({'error': 'OAuth callback failed', 'details': str(e)}), 500
 
 @app.route('/api/user-limit-status', methods=['GET'])
 def get_user_limit_status():
