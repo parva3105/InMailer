@@ -1674,9 +1674,11 @@ def google_auth():
             include_granted_scopes='true',
             prompt='consent'
         )
-        
-        # Store state in session for security
+
+        # Store state and code_verifier in session for security
+        # code_verifier is needed for PKCE token exchange in the callback
         session['oauth_state'] = state
+        session['code_verifier'] = flow.code_verifier
         
         print(f"🔍 OAuth initiated - State: {state}")
         print(f"🔍 Authorization URL: {authorization_url}")
@@ -1726,6 +1728,11 @@ def google_callback():
         flow.redirect_uri = GOOGLE_REDIRECT_URI
         print(f"🔍 Redirect URI: {GOOGLE_REDIRECT_URI}")
         
+        # Restore the PKCE code_verifier from the session so Google accepts the exchange
+        code_verifier = session.get('code_verifier')
+        if code_verifier:
+            flow.code_verifier = code_verifier
+
         # Exchange authorization code for tokens
         print("🔄 Exchanging code for tokens...")
         flow.fetch_token(code=code)
