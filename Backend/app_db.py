@@ -12,6 +12,17 @@ def safe_isoformat(val):
     if isinstance(val, str):
         return val
     return val.isoformat()
+
+def safe_json(val):
+    """Parse JSON string if needed, return as-is if already a list/dict."""
+    if val is None:
+        return []
+    if isinstance(val, str):
+        try:
+            return json.loads(val)
+        except (json.JSONDecodeError, TypeError):
+            return []
+    return val
 from mail_merge import parse_template, render_templates, send_via_smtp
 import csv
 import tempfile
@@ -473,7 +484,7 @@ def get_templates():
                 'name': template.name,
                 'subject': template.subject,
                 'content': template.content,
-                'variables': template.variables,
+                'variables': safe_json(template.variables),
                 'attachment_path': template.attachment_path,
                 'attachment_name': template.attachment_name,
                 'created_at': safe_isoformat(template.created_at),
@@ -579,7 +590,7 @@ def create_template():
             'name': template.name,
             'subject': template.subject,
             'content': template.content,
-            'variables': template.variables,
+            'variables': safe_json(template.variables),
             'attachment_path': template.attachment_path,
             'attachment_name': template.attachment_name,
             'created_at': safe_isoformat(template.created_at),
@@ -687,7 +698,7 @@ def update_template(template_id):
             'name': template.name,
             'subject': template.subject,
             'content': template.content,
-            'variables': template.variables,
+            'variables': safe_json(template.variables),
             'attachment_path': template.attachment_path,
             'attachment_name': template.attachment_name,
             'created_at': safe_isoformat(template.created_at),
