@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, desc
+from sqlalchemy import and_, desc, text
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from .models import User, Template, EmailLog
@@ -31,13 +31,26 @@ class UserService:
     
     @staticmethod
     def get_user_by_email(email: str) -> Optional[User]:
-        """Get user by email"""
+        """Get user by email using raw SQL to avoid ORM detachment issues"""
         db = get_db_session()
         try:
-            user = db.query(User).filter(User.email == email).first()
-            if user:
-                # Force-load all attributes before detaching so they survive db.close()
-                db.expunge(user)
+            result = db.execute(
+                text("SELECT id, email, name, password_hash, is_google_user, created_at, updated_at FROM users WHERE email = :email LIMIT 1"),
+                {"email": email}
+            )
+            row = result.fetchone()
+            if not row:
+                return None
+            # Build a transient User object from raw data (not attached to any session)
+            user = User.__new__(User)
+            user.id = row[0]
+            user.email = row[1]
+            user.name = row[2]
+            user.password_hash = row[3]
+            user.is_google_user = row[4]
+            user.created_at = row[5]
+            user.updated_at = row[6]
+            print(f"🔍 get_user_by_email: raw SQL returned id={row[0]} for email={email}", flush=True)
             return user
         finally:
             db.close()
@@ -160,13 +173,30 @@ class TemplateService:
             db.close()
     
     @staticmethod
-    def get_user_templates(user_id: int) -> List[Template]:
-        """Get all templates for a specific user"""
+    def get_user_templates(user_id: int) -> List[dict]:
+        """Get all templates for a specific user using raw SQL"""
         db = get_db_session()
         try:
-            templates = db.query(Template).filter(Template.user_id == user_id).order_by(desc(Template.updated_at)).all()
-            for t in templates:
-                db.expunge(t)
+            result = db.execute(
+                text("SELECT id, user_id, name, subject, content, variables, attachment_path, attachment_name, created_at, updated_at FROM templates WHERE user_id = :uid ORDER BY updated_at DESC"),
+                {"uid": user_id}
+            )
+            rows = result.fetchall()
+            templates = []
+            for row in rows:
+                t = Template.__new__(Template)
+                t.id = row[0]
+                t.user_id = row[1]
+                t.name = row[2]
+                t.subject = row[3]
+                t.content = row[4]
+                t.variables = row[5]
+                t.attachment_path = row[6]
+                t.attachment_name = row[7]
+                t.created_at = row[8]
+                t.updated_at = row[9]
+                templates.append(t)
+            print(f"🔍 get_user_templates: raw SQL returned {len(templates)} templates for user_id={user_id}", flush=True)
             return templates
         finally:
             db.close()
