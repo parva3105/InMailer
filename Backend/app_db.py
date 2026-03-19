@@ -1160,10 +1160,10 @@ def send_emails():
         if not template:
             return jsonify({'error': 'Template not found'}), 404
         
-        # Get user credentials (session first, DB fallback)
-        credentials_data = get_credentials_data()
+        # Get user credentials from session
+        credentials_data = session.get('credentials')
         if not credentials_data:
-            print("❌ No credentials found in session or database")
+            print("❌ No credentials found in session")
             return jsonify({
                 'error': 'No Gmail credentials found. Please sign in with Google again.',
                 'action': 'sign_in_required',
@@ -1340,7 +1340,7 @@ def send_test_email():
         if not body:
             return jsonify({'error': 'Email body is required'}), 400
 
-        credentials_data = get_credentials_data()
+        credentials_data = session.get('credentials')
         if not credentials_data:
             return jsonify({
                 'error': 'No Gmail credentials found. Please sign in with Google again.',
@@ -1404,9 +1404,9 @@ def debug_credentials():
         if not user_info:
             return jsonify({'error': 'Not authenticated'}), 401
         
-        credentials_data = get_credentials_data()
+        credentials_data = session.get('credentials')
         if not credentials_data:
-            return jsonify({'error': 'No credentials found in session or database'}), 401
+            return jsonify({'error': 'No credentials found in session'}), 401
         
         # Check credential fields
         credential_info = {
@@ -1489,14 +1489,8 @@ def force_reauth():
         # Clear only credentials, keep user info for the OAuth flow
         if 'credentials' in session:
             del session['credentials']
-            print(f"✅ Session credentials cleared for user: {user_email}")
-
-        # Also clear from database so the fallback doesn't restore stale tokens
-        user = UserService.get_user_by_email(user_email)
-        if user:
-            UserService.clear_oauth_credentials(user.id)
-            print(f"✅ Database credentials cleared for user: {user_email}")
-
+            print(f"✅ Credentials cleared for user: {user_email}")
+        
         # Redirect to OAuth flow
         return redirect('/auth/google')
         
@@ -1512,7 +1506,7 @@ def validate_credentials():
         if not user_info:
             return jsonify({'error': 'Not authenticated'}), 401
         
-        credentials_data = get_credentials_data()
+        credentials_data = session.get('credentials')
         if not credentials_data:
             return jsonify({
                 'valid': False,
@@ -1656,32 +1650,6 @@ def health_check():
         }), 500
 
 # OAuth Helper Functions
-def get_credentials_data():
-    """Return OAuth credential dict from session, falling back to the database.
-
-    This makes credentials survive server restarts: the first request after a
-    restart re-populates the session from the DB so subsequent calls are fast.
-    """
-    creds = session.get('credentials')
-    if creds:
-        return creds
-
-    user_info = session.get('user_info')
-    if not user_info:
-        return None
-
-    user = UserService.get_user_by_email(user_info.get('email'))
-    if not user:
-        return None
-
-    db_creds = UserService.get_oauth_credentials(user.id)
-    if db_creds:
-        # Repopulate session so future requests in this session are instant
-        session['credentials'] = db_creds
-
-    return db_creds
-
-
 def create_flow():
     return build_oauth_flow(
         client_id=GOOGLE_CLIENT_ID,
@@ -1844,15 +1812,14 @@ def google_callback():
         
         # Store user info and tokens in session
         session['user_info'] = user_info
-        credentials_dict = {
+        session['credentials'] = {
             'token': credentials.token,
             'refresh_token': credentials.refresh_token,
             'token_uri': credentials.token_uri,
             'client_id': credentials.client_id,
             'client_secret': credentials.client_secret,
-            'scopes': list(credentials.scopes) if credentials.scopes else []
+            'scopes': credentials.scopes
         }
-        session['credentials'] = credentials_dict
         
         # Debug session storage
         print(f"🔍 === OAUTH CALLBACK DEBUG ===")
@@ -1898,13 +1865,9 @@ def google_callback():
             print(f"✅ Updated existing user with Google OAuth: {user_email}")
             print(f"🔍 User name after update: '{user.name}'")
         
-        # Persist credentials to database so they survive server restarts
-        UserService.save_oauth_credentials(user.id, credentials_dict)
-        print(f"✅ Credentials saved to database for user: {user_email}")
-
         print(f"✅ OAuth successful! User: {user_info.get('email')}")
         print(f"✅ Session stored: {list(session.keys())}")
-
+        
         # Redirect to frontend after successful OAuth
         frontend_url = os.getenv('FRONTEND_URL', 'https://inmailer.vercel.app')
         return redirect(f"{frontend_url}/auth/success?email={user_info.get('email')}&name={user_info.get('name')}")
