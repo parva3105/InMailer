@@ -105,3 +105,5 @@ check_user_limit.py
 
 setup_production_env_vars.md
 PRODUCTION_SETUP_GUIDE.md
+Executive.md
+script.md
