@@ -147,6 +147,47 @@ def replace_template_variables(text: str, contact_data: dict) -> str:
     
     # Find all variable patterns in the text using regex
     import re
+
+    def normalize_var_name(value: str) -> str:
+        """Normalize a variable/key to a compact comparable format."""
+        return re.sub(r'[\s_\-]+', '', str(value or '').strip().lower())
+
+    def resolve_semantic_group(var_name: str) -> str:
+        """Map well-known template variables to a semantic group."""
+        normalized = normalize_var_name(var_name)
+
+        first_name_aliases = {
+            "firstname", "first", "name", "givenname", "contactname", "fullname"
+        }
+        company_aliases = {
+            "company", "companyname", "organization", "organisation", "org",
+            "business", "employer", "accountname", "compantname", "comapny"
+        }
+
+        if normalized in first_name_aliases:
+            return "first_name"
+        if normalized in company_aliases:
+            return "company"
+        return ""
+
+    def semantic_aliases_for_group(group: str) -> set:
+        if group == "first_name":
+            return {
+                "firstname", "first", "name", "givenname", "contactname", "fullname"
+            }
+        if group == "company":
+            return {
+                "company", "companyname", "organization", "organisation", "org",
+                "business", "employer", "accountname", "compantname", "comapny"
+            }
+        return set()
+
+    # Fast lookup by normalized key
+    normalized_mapping = {}
+    for mapping_key, mapping_value in variable_mapping.items():
+        normalized_key = normalize_var_name(mapping_key)
+        if normalized_key and normalized_key not in normalized_mapping:
+            normalized_mapping[normalized_key] = mapping_value
     
     # Pattern 1: ${VariableName} or ${variable_name} - matches anything between ${}
     pattern1 = r'\$\{([^}]+)\}'
@@ -185,14 +226,46 @@ def replace_template_variables(text: str, contact_data: dict) -> str:
         
         # Try normalized match (remove spaces, underscores, hyphens)
         if not found_match:
-            normalized_var = var_name.lower().replace(' ', '').replace('_', '').replace('-', '')
-            for mapping_key, mapping_value in variable_mapping.items():
-                normalized_key = mapping_key.lower().replace(' ', '').replace('_', '').replace('-', '')
-                if normalized_key == normalized_var:
-                    replacement_value = mapping_value
-                    found_match = True
-                    print(f"✅ Normalized match: ${var_name} -> {replacement_value}")
-                    break
+            normalized_var = normalize_var_name(var_name)
+            if normalized_var in normalized_mapping:
+                replacement_value = normalized_mapping[normalized_var]
+                found_match = True
+                print(f"✅ Normalized match: ${var_name} -> {replacement_value}")
+
+        # Try semantic aliases for well-known fields (e.g., First_Name, Company)
+        if not found_match:
+            semantic_group = resolve_semantic_group(var_name)
+            if semantic_group:
+                for alias_norm in semantic_aliases_for_group(semantic_group):
+                    if alias_norm in normalized_mapping:
+                        replacement_value = normalized_mapping[alias_norm]
+                        found_match = True
+                        print(f"✅ Semantic alias match ({semantic_group}): ${var_name} -> {replacement_value}")
+                        break
+
+                # Secondary fallback for prefixes like company_name, first_name_value, etc.
+                if not found_match:
+                    for normalized_key, mapping_value in normalized_mapping.items():
+                        if semantic_group == "first_name" and (
+                            normalized_key.startswith("firstname")
+                            or normalized_key.startswith("givenname")
+                            or normalized_key == "name"
+                        ):
+                            replacement_value = mapping_value
+                            found_match = True
+                            print(f"✅ Semantic prefix match ({semantic_group}): ${var_name} -> {replacement_value}")
+                            break
+                        if semantic_group == "company" and (
+                            normalized_key.startswith("company")
+                            or normalized_key.endswith("company")
+                            or normalized_key.startswith("organization")
+                            or normalized_key.startswith("organisation")
+                            or normalized_key == "org"
+                        ):
+                            replacement_value = mapping_value
+                            found_match = True
+                            print(f"✅ Semantic prefix match ({semantic_group}): ${var_name} -> {replacement_value}")
+                            break
         
         if found_match and replacement_value:
             # Use regex to replace all occurrences (both ${var} and $var formats)
