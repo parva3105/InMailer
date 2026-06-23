@@ -5,7 +5,8 @@ from datetime import datetime
 from types import SimpleNamespace
 from .models import User, Template, EmailLog, Campaign
 from .config import get_db_session
-import hashlib
+import bcrypt
+import logging
 import math
 
 class UserService:
@@ -16,7 +17,7 @@ class UserService:
         try:
             password_hash = None
             if password:
-                password_hash = hashlib.sha256(password.encode()).hexdigest()
+                password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
             user = User(
                 email=email,
@@ -48,7 +49,7 @@ class UserService:
                 password_hash=row[3], is_google_user=row[4],
                 created_at=row[5], updated_at=row[6]
             )
-            print(f"🔍 get_user_by_email: raw SQL returned id={user.id} for email={email}", flush=True)
+            logging.debug(f"🔍 get_user_by_email: raw SQL returned id={user.id} for email={email}")
             return user
         finally:
             db.close()
@@ -78,7 +79,14 @@ class UserService:
         """Verify user password"""
         if not user.password_hash:
             return False
-        return user.password_hash == hashlib.sha256(password.encode()).hexdigest()
+        stored_hash = user.password_hash
+        if isinstance(stored_hash, str):
+            stored_hash = stored_hash.encode()
+        try:
+            return bcrypt.checkpw(password.encode(), stored_hash)
+        except (ValueError, TypeError):
+            # Stored hash is not a valid bcrypt hash (e.g. legacy format)
+            return False
 
     @staticmethod
     def update_user_google_oauth(user_id: int, new_name: str = None) -> User:
@@ -195,7 +203,7 @@ class TemplateService:
                     content=row[4], variables=row[5], attachment_path=row[6],
                     attachment_name=row[7], created_at=row[8], updated_at=row[9]
                 ))
-            print(f"🔍 get_user_templates: raw SQL returned {len(templates)} templates for user_id={user_id}", flush=True)
+            logging.debug(f"🔍 get_user_templates: raw SQL returned {len(templates)} templates for user_id={user_id}")
             return templates
         finally:
             db.close()
@@ -271,30 +279,30 @@ class TemplateService:
         """Count templates for a specific user"""
         db = get_db_session()
         try:
-            print(f"🔍 === COUNT USER TEMPLATES DEBUG ===")
-            print(f"🔍 User ID: {user_id}")
-            print(f"🔍 Database session: {db}")
+            logging.debug(f"🔍 === COUNT USER TEMPLATES DEBUG ===")
+            logging.debug(f"🔍 User ID: {user_id}")
+            logging.debug(f"🔍 Database session: {db}")
 
             # Get all templates for debugging
             all_templates = db.query(Template).all()
-            print(f"🔍 Total templates in database: {len(all_templates)}")
+            logging.debug(f"🔍 Total templates in database: {len(all_templates)}")
 
             # Show template details
             for template in all_templates:
-                print(f"🔍   - Template ID: {template.id}, User ID: {template.user_id}, Name: {template.name}")
+                logging.debug(f"🔍   - Template ID: {template.id}, User ID: {template.user_id}, Name: {template.name}")
 
             # Get filtered templates
             user_templates = db.query(Template).filter(Template.user_id == user_id).all()
-            print(f"🔍 Templates for user {user_id}: {len(user_templates)}")
+            logging.debug(f"🔍 Templates for user {user_id}: {len(user_templates)}")
 
             # Show filtered template details
             for template in user_templates:
-                print(f"🔍   - Template ID: {template.id}, Name: {template.name}")
+                logging.debug(f"🔍   - Template ID: {template.id}, Name: {template.name}")
 
             # Get count
             count = db.query(Template).filter(Template.user_id == user_id).count()
-            print(f"🔍 Final count returned: {count}")
-            print(f"🔍 =================================")
+            logging.debug(f"🔍 Final count returned: {count}")
+            logging.debug(f"🔍 =================================")
 
             return count
         finally:

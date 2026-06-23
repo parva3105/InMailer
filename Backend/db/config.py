@@ -27,7 +27,7 @@ if DATABASE_URL.startswith('sqlite'):
         DATABASE_URL,
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
-        echo=True  # Set to False in production
+        echo=False  # Never log all SQL in production
     )
 else:
     # PostgreSQL configuration for production (including Neon)

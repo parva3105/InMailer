@@ -1,9 +1,18 @@
 from flask import request, jsonify, session, redirect
+import logging
 import os
 import json
 import shutil
 from pathlib import Path
 from datetime import datetime
+
+# Configure logging. Level is controlled by the LOG_LEVEL env var and defaults
+# to WARNING so production does not emit verbose/debug output by default.
+logging.basicConfig(
+    level=getattr(logging, os.getenv('LOG_LEVEL', 'WARNING').upper(), logging.WARNING),
+    format='%(asctime)s %(levelname)s %(name)s: %(message)s',
+)
+logger = logging.getLogger(__name__)
 
 def safe_isoformat(val):
     """Convert datetime or string to ISO format string safely."""
@@ -51,6 +60,34 @@ GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'https://inmailer.onrende
 # User limit configuration
 MAX_FREE_USERS = int(os.getenv('MAX_FREE_USERS', '50'))
 
+# Admin allowlist - comma-separated emails permitted to access admin/debug routes.
+# Configured via the ADMIN_EMAILS env var; empty by default so nothing is exposed
+# unless an operator explicitly grants access.
+ADMIN_EMAILS = {
+    e.strip().lower()
+    for e in os.getenv('ADMIN_EMAILS', '').split(',')
+    if e.strip()
+}
+
+
+def require_admin():
+    """Authorize the current session as an admin.
+
+    Returns (user_info, None) when the authenticated user's email is in the
+    ADMIN_EMAILS allowlist. Otherwise returns (None, (response, status)) so the
+    caller can return the error directly. Fails closed when no admins are
+    configured.
+    """
+    user_info = session.get('user_info')
+    if not user_info:
+        return None, (jsonify({'error': 'Not authenticated'}), 401)
+
+    email = (user_info.get('email') or '').strip().lower()
+    if not ADMIN_EMAILS or email not in ADMIN_EMAILS:
+        return None, (jsonify({'error': 'Admin access required'}), 403)
+
+    return user_info, None
+
 # Gmail API scopes - include openid since Google adds it automatically
 SCOPES = [
     'https://www.googleapis.com/auth/gmail.send',
@@ -67,8 +104,8 @@ def replace_template_variables(text: str, contact_data: dict) -> str:
     result = text
     replacements_made = []
     
-    print(f"🔍 Processing text: {text[:100]}...")
-    print(f"🔍 Contact data: {contact_data}")
+    logging.debug(f"🔍 Processing text: {text[:100]}...")
+    logging.debug(f"🔍 Contact data: {contact_data}")
     
     # Create a comprehensive mapping of all possible variable formats
     variable_mapping = {}
@@ -142,8 +179,8 @@ def replace_template_variables(text: str, contact_data: dict) -> str:
                 variable_mapping[camel_case.upper()] = clean_value
                 variable_mapping[camel_case.title()] = clean_value
     
-    print(f"🔍 Created {len(variable_mapping)} variable mappings")
-    print(f"🔍 Sample mappings: {dict(list(variable_mapping.items())[:10])}")
+    logging.debug(f"🔍 Created {len(variable_mapping)} variable mappings")
+    logging.debug(f"🔍 Sample mappings: {dict(list(variable_mapping.items())[:10])}")
     
     # Find all variable patterns in the text using regex
     import re
@@ -192,16 +229,16 @@ def replace_template_variables(text: str, contact_data: dict) -> str:
     # Pattern 1: ${VariableName} or ${variable_name} - matches anything between ${}
     pattern1 = r'\$\{([^}]+)\}'
     matches1 = re.findall(pattern1, text)
-    print(f"🔍 Found ${{}} pattern matches: {matches1}")
+    logging.debug(f"🔍 Found ${{}} pattern matches: {matches1}")
     
     # Pattern 2: $VariableName or $variable_name
     pattern2 = r'\$([a-zA-Z_][a-zA-Z0-9_]*)\b'
     matches2 = re.findall(pattern2, text)
-    print(f"🔍 Found $Variable pattern matches: {matches2}")
+    logging.debug(f"🔍 Found $Variable pattern matches: {matches2}")
     
     # Combine all matches
     all_matches = list(set(matches1 + matches2))
-    print(f"🔍 All unique variable matches: {all_matches}")
+    logging.debug(f"🔍 All unique variable matches: {all_matches}")
     
     # Replace all variables using regex for more reliable replacement
     for var_name in all_matches:
@@ -213,7 +250,7 @@ def replace_template_variables(text: str, contact_data: dict) -> str:
         if var_name in variable_mapping:
             replacement_value = variable_mapping[var_name]
             found_match = True
-            print(f"✅ Exact match: ${var_name} -> {replacement_value}")
+            logging.debug(f"✅ Exact match: ${var_name} -> {replacement_value}")
         
         # Try case-insensitive match
         if not found_match:
@@ -221,7 +258,7 @@ def replace_template_variables(text: str, contact_data: dict) -> str:
                 if mapping_key.lower() == var_name.lower():
                     replacement_value = mapping_value
                     found_match = True
-                    print(f"✅ Case-insensitive match: ${var_name} -> {replacement_value}")
+                    logging.debug(f"✅ Case-insensitive match: ${var_name} -> {replacement_value}")
                     break
         
         # Try normalized match (remove spaces, underscores, hyphens)
@@ -230,7 +267,7 @@ def replace_template_variables(text: str, contact_data: dict) -> str:
             if normalized_var in normalized_mapping:
                 replacement_value = normalized_mapping[normalized_var]
                 found_match = True
-                print(f"✅ Normalized match: ${var_name} -> {replacement_value}")
+                logging.debug(f"✅ Normalized match: ${var_name} -> {replacement_value}")
 
         # Try semantic aliases for well-known fields (e.g., First_Name, Company)
         if not found_match:
@@ -240,7 +277,7 @@ def replace_template_variables(text: str, contact_data: dict) -> str:
                     if alias_norm in normalized_mapping:
                         replacement_value = normalized_mapping[alias_norm]
                         found_match = True
-                        print(f"✅ Semantic alias match ({semantic_group}): ${var_name} -> {replacement_value}")
+                        logging.debug(f"✅ Semantic alias match ({semantic_group}): ${var_name} -> {replacement_value}")
                         break
 
                 # Secondary fallback for prefixes like company_name, first_name_value, etc.
@@ -253,7 +290,7 @@ def replace_template_variables(text: str, contact_data: dict) -> str:
                         ):
                             replacement_value = mapping_value
                             found_match = True
-                            print(f"✅ Semantic prefix match ({semantic_group}): ${var_name} -> {replacement_value}")
+                            logging.debug(f"✅ Semantic prefix match ({semantic_group}): ${var_name} -> {replacement_value}")
                             break
                         if semantic_group == "company" and (
                             normalized_key.startswith("company")
@@ -264,7 +301,7 @@ def replace_template_variables(text: str, contact_data: dict) -> str:
                         ):
                             replacement_value = mapping_value
                             found_match = True
-                            print(f"✅ Semantic prefix match ({semantic_group}): ${var_name} -> {replacement_value}")
+                            logging.debug(f"✅ Semantic prefix match ({semantic_group}): ${var_name} -> {replacement_value}")
                             break
         
         if found_match and replacement_value:
@@ -280,18 +317,18 @@ def replace_template_variables(text: str, contact_data: dict) -> str:
             result = re.sub(pattern2, replacement_value, result)
             replacements_made.append(f"${var_name} -> {replacement_value}")
         else:
-            print(f"⚠️ No match found for variable: ${var_name}")
-            print(f"🔍 Available keys in contact_data: {list(contact_data.keys())}")
-            print(f"🔍 Sample variable_mapping keys: {list(variable_mapping.keys())[:10]}")
+            logging.warning(f"⚠️ No match found for variable: ${var_name}")
+            logging.debug(f"🔍 Available keys in contact_data: {list(contact_data.keys())}")
+            logging.debug(f"🔍 Sample variable_mapping keys: {list(variable_mapping.keys())[:10]}")
     
     # Final debug logging
     if replacements_made:
-        print(f"🔍 Total replacements made: {len(replacements_made)}")
-        print(f"🔍 Replacements: {replacements_made}")
-        print(f"🔍 Final result preview: {result[:200]}...")
+        logging.debug(f"🔍 Total replacements made: {len(replacements_made)}")
+        logging.debug(f"🔍 Replacements: {replacements_made}")
+        logging.debug(f"🔍 Final result preview: {result[:200]}...")
     else:
-        print(f"⚠️ No variable replacements made!")
-        print(f"🔍 Available variable mappings: {list(variable_mapping.keys())[:20]}...")
+        logging.warning(f"⚠️ No variable replacements made!")
+        logging.debug(f"🔍 Available variable mappings: {list(variable_mapping.keys())[:20]}...")
     
     return result
 
@@ -306,7 +343,7 @@ def save_templates_to_file():
             backup_file = templates_dir / "templates_backup.json"
             import shutil
             shutil.copy2(templates_file, backup_file)
-            print(f"💾 Created backup: {backup_file}")
+            logging.debug(f"💾 Created backup: {backup_file}")
         
         # Save to temporary file first, then rename (atomic operation)
         temp_file = templates_dir / "templates_temp.json"
@@ -315,29 +352,29 @@ def save_templates_to_file():
         
         # Atomic rename
         temp_file.replace(templates_file)
-        print(f"✅ Legacy templates file updated (now empty - using database)")
+        logging.debug(f"✅ Legacy templates file updated (now empty - using database)")
         
     except Exception as e:
-        print(f"❌ Error saving templates: {e}")
+        logging.error(f"❌ Error saving templates: {e}")
         import traceback
         traceback.print_exc()
 
 def initialize_templates():
     """Initialize database and migrate existing templates if needed"""
-    print("🚀 Initializing InMailer Backend with Database...")
+    logging.debug("🚀 Initializing InMailer Backend with Database...")
     
     # Initialize database tables
     try:
         init_db()
-        print("✅ Database initialized successfully")
+        logging.debug("✅ Database initialized successfully")
     except Exception as e:
-        print(f"❌ Database initialization failed: {e}")
+        logging.error(f"❌ Database initialization failed: {e}")
         raise
     
     # Create templates directory if it doesn't exist
     templates_dir = Path("Templates")
     templates_dir.mkdir(exist_ok=True)
-    print(f"📁 Templates directory: {templates_dir.absolute()}")
+    logging.debug(f"📁 Templates directory: {templates_dir.absolute()}")
     
     # Check if we need to migrate existing templates
     templates_file = templates_dir / "templates.json"
@@ -347,7 +384,7 @@ def initialize_templates():
                 existing_templates = json.load(f)
             
             if existing_templates:
-                print(f"🔄 Found {len(existing_templates)} existing templates to migrate")
+                logging.debug(f"🔄 Found {len(existing_templates)} existing templates to migrate")
                 
                 # Create a default user for existing templates
                 default_user = UserService.create_user(
@@ -356,7 +393,7 @@ def initialize_templates():
                     is_google_user=False
                 )
                 
-                print(f"✅ Created default user: {default_user.email}")
+                logging.debug(f"✅ Created default user: {default_user.email}")
                 
                 # Migrate each template
                 migrated_count = 0
@@ -372,61 +409,61 @@ def initialize_templates():
                             attachment_name=template_data.get('attachment_name')
                         )
                         
-                        print(f"✅ Migrated template: {template.name}")
+                        logging.debug(f"✅ Migrated template: {template.name}")
                         migrated_count += 1
                         
                     except Exception as e:
-                        print(f"❌ Failed to migrate template {template_data.get('name', 'Unknown')}: {e}")
+                        logging.error(f"❌ Failed to migrate template {template_data.get('name', 'Unknown')}: {e}")
                 
-                print(f"✅ Migration complete: {migrated_count}/{len(existing_templates)} templates migrated")
+                logging.debug(f"✅ Migration complete: {migrated_count}/{len(existing_templates)} templates migrated")
                 
                 # Update the JSON file to indicate migration
                 save_templates_to_file()
                 
         except Exception as e:
-            print(f"❌ Error during template migration: {e}")
+            logging.error(f"❌ Error during template migration: {e}")
     
-    print("✅ Template initialization complete!")
+    logging.debug("✅ Template initialization complete!")
 
 def send_gmail(credentials, to_email, subject, body, attachment_path=None, attachment_name=None, sender_name=None, user_email=None):
     """Send email using Gmail API"""
     try:
-        print(f"📧 Starting Gmail send process...")
-        print(f"📧 Sender name from database: {sender_name or 'InMailer'}")
-        print(f"📧 User email from database: {user_email or 'Not provided'}")
-        print(f"📧 To: {to_email}")
-        print(f"📧 Subject: {subject}")
-        print(f"📧 Body length: {len(body)} characters")
-        print(f"📧 Attachment: {attachment_path}")
-        print(f"📧 Attachment name: {attachment_name}")
+        logging.debug(f"📧 Starting Gmail send process...")
+        logging.debug(f"📧 Sender name from database: {sender_name or 'InMailer'}")
+        logging.debug(f"📧 User email from database: {user_email or 'Not provided'}")
+        logging.debug(f"📧 To: {to_email}")
+        logging.debug(f"📧 Subject: {subject}")
+        logging.debug(f"📧 Body length: {len(body)} characters")
+        logging.debug(f"📧 Attachment: {attachment_path}")
+        logging.debug(f"📧 Attachment name: {attachment_name}")
         
         service = build('gmail', 'v1', credentials=credentials)
-        print(f"✅ Gmail service built successfully")
+        logging.debug(f"✅ Gmail service built successfully")
         
         # Create email message with sender name and user email from database
         message = create_email_message(to_email, subject, body, attachment_path, attachment_name, sender_name, user_email)
-        print(f"✅ Email message created successfully")
+        logging.debug(f"✅ Email message created successfully")
         
         # Send the email directly - the sender name is already set in the message headers
         try:
             sent_message = service.users().messages().send(userId='me', body=message).execute()
-            print(f"✅ Email sent successfully! Message ID: {sent_message.get('id')}")
-            print(f"📧 Email sent with sender name: '{sender_name}' from database")
+            logging.debug(f"✅ Email sent successfully! Message ID: {sent_message.get('id')}")
+            logging.debug(f"📧 Email sent with sender name: '{sender_name}' from database")
             return sent_message
         except Exception as send_error:
-            print(f"❌ Error during Gmail API send: {send_error}")
+            logging.error(f"❌ Error during Gmail API send: {send_error}")
             
             # Check if it's a credentials issue
             if "credentials" in str(send_error).lower() or "refresh" in str(send_error).lower():
-                print(f"🔍 This appears to be a credentials issue. User may need to re-authenticate.")
-                print(f"🔍 Error details: {send_error}")
+                logging.debug(f"🔍 This appears to be a credentials issue. User may need to re-authenticate.")
+                logging.error(f"🔍 Error details: {send_error}")
                 return None
             else:
                 # Re-raise other errors
                 raise send_error
         
     except Exception as e:
-        print(f"❌ Error sending Gmail: {e}")
+        logging.error(f"❌ Error sending Gmail: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -455,12 +492,12 @@ def create_email_message(to_email, subject, body, attachment_path=None, attachme
         message['X-Sender'] = sender_name
         message['X-From'] = sender_name
         
-        print(f"📧 Setting sender name from database: {sender_name}")
-        print(f"📧 Using actual user email: {user_email}")
-        print(f"📧 Email will display as: {sender_name} <{user_email}>")
+        logging.debug(f"📧 Setting sender name from database: {sender_name}")
+        logging.debug(f"📧 Using actual user email: {user_email}")
+        logging.debug(f"📧 Email will display as: {sender_name} <{user_email}>")
     else:
         message['From'] = "InMailer <inmailer@gmail.com>"
-        print(f"📧 Using default From field: InMailer")
+        logging.debug(f"📧 Using default From field: InMailer")
     
     # Add text body
     text_part = MIMEText(body, 'plain')
@@ -468,14 +505,14 @@ def create_email_message(to_email, subject, body, attachment_path=None, attachme
     
     # Add attachment if provided
     if attachment_path and os.path.exists(attachment_path):
-        print(f"📎 Processing attachment: {attachment_path}")
+        logging.debug(f"📎 Processing attachment: {attachment_path}")
         
         # Detect MIME type
         mime_type, _ = mimetypes.guess_type(attachment_path)
         if mime_type is None:
             mime_type = 'application/octet-stream'
         
-        print(f"📎 Detected MIME type: {mime_type}")
+        logging.debug(f"📎 Detected MIME type: {mime_type}")
         
         # Get file extension for better MIME type detection
         file_extension = os.path.splitext(attachment_path)[1].lower()
@@ -492,23 +529,21 @@ def create_email_message(to_email, subject, body, attachment_path=None, attachme
         elif file_extension == '.txt':
             mime_type = 'text/plain'
         
-        print(f"📎 Final MIME type: {mime_type}")
+        logging.debug(f"📎 Final MIME type: {mime_type}")
         
         # Create attachment part
         main_type, sub_type = mime_type.split('/', 1)
         
         with open(attachment_path, 'rb') as f:
             attachment_data = f.read()
-            print(f"📎 Attachment size: {len(attachment_data)} bytes")
+            logging.debug(f"📎 Attachment size: {len(attachment_data)} bytes")
             
             if main_type == 'text':
                 # Handle text files
                 attachment = MIMEText(attachment_data.decode('utf-8', errors='ignore'), sub_type)
-            elif main_type == 'image':
-                # Handle image files
-                attachment = MIMEText(attachment_data, 'base64', filename=attachment_name or os.path.basename(attachment_path))
             else:
-                # Handle binary files (PDF, DOC, etc.)
+                # Handle all binary files (images, PDF, DOC, etc.) with MIMEBase.
+                # MIMEText cannot carry raw binary payloads, so base64-encode here.
                 attachment = MIMEBase(main_type, sub_type)
                 attachment.set_payload(attachment_data)
                 # Encode the attachment properly
@@ -518,7 +553,7 @@ def create_email_message(to_email, subject, body, attachment_path=None, attachme
             filename = attachment_name if attachment_name else os.path.basename(attachment_path)
             attachment.add_header('Content-Disposition', 'attachment', filename=filename)
             message.attach(attachment)
-            print(f"✅ Attachment attached successfully with filename: {filename}")
+            logging.debug(f"✅ Attachment attached successfully with filename: {filename}")
     
     # Encode message
     raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
@@ -542,12 +577,12 @@ def get_templates():
         if not user:
             return jsonify({'error': 'User not found'}), 404
 
-        print(f"🔍 Debug: Looking up templates for DB user.id={user.id}, email={user_email}", flush=True)
+        logging.debug(f"🔍 Debug: Looking up templates for DB user.id={user.id}, email={user_email}")
 
         # Get user's templates from database
         templates = TemplateService.get_user_templates(user.id)
 
-        print(f"🔍 Debug: Found {len(templates)} templates for user.id={user.id}", flush=True)
+        logging.debug(f"🔍 Debug: Found {len(templates)} templates for user.id={user.id}")
 
         # Convert to JSON-serializable format
         templates_data = []
@@ -564,11 +599,11 @@ def get_templates():
                 'updated_at': safe_isoformat(template.updated_at)
             })
         
-        print(f"🔍 Debug: Returning {len(templates_data)} templates for user {user_email}")
+        logging.debug(f"🔍 Debug: Returning {len(templates_data)} templates for user {user_email}")
         return jsonify(templates_data)
         
     except Exception as e:
-        print(f"❌ Error getting templates: {e}")
+        logging.error(f"❌ Error getting templates: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/templates', methods=['POST'])
@@ -611,6 +646,7 @@ def create_template():
                 file = request.files['file']
                 if file.filename != '':
                     # Create attachments directory if it doesn't exist
+                    # TODO: store in persistent object store (S3/R2) — local filesystem is ephemeral on Render
                     attachments_dir = Path("Templates/attachments")
                     attachments_dir.mkdir(exist_ok=True)
                     
@@ -625,7 +661,7 @@ def create_template():
                     
                     attachment_path = str(file_path)
                     attachment_name = file.filename
-                    print(f"✅ New attachment uploaded: {attachment_name}")
+                    logging.debug(f"✅ New attachment uploaded: {attachment_name}")
         else:
             # Handle JSON data (no file upload)
             data = request.json
@@ -638,10 +674,10 @@ def create_template():
             return jsonify({'error': 'Missing required fields'}), 400
         
         # Create template in database with debug logging
-        print(f"🔍 === TEMPLATE CREATION DEBUG ===")
-        print(f"🔍 Creating template for user ID: {user.id}")
-        print(f"🔍 Template name: {template_name}")
-        print(f"🔍 User email: {user_email}")
+        logging.debug(f"🔍 === TEMPLATE CREATION DEBUG ===")
+        logging.debug(f"🔍 Creating template for user ID: {user.id}")
+        logging.debug(f"🔍 Template name: {template_name}")
+        logging.debug(f"🔍 User email: {user_email}")
         
         template = TemplateService.create_template(
             user_id=user.id,
@@ -653,9 +689,9 @@ def create_template():
             attachment_name=attachment_name
         )
         
-        print(f"🔍 Template created with ID: {template.id}")
-        print(f"🔍 Template user_id: {template.user_id}")
-        print(f"🔍 =================================")
+        logging.debug(f"🔍 Template created with ID: {template.id}")
+        logging.debug(f"🔍 Template user_id: {template.user_id}")
+        logging.debug(f"🔍 =================================")
         
         # Convert to JSON-serializable format
         template_data = {
@@ -670,11 +706,11 @@ def create_template():
             'updated_at': safe_isoformat(template.updated_at)
         }
         
-        print(f"✅ Template created successfully: {template_name}")
+        logging.debug(f"✅ Template created successfully: {template_name}")
         return jsonify({'message': 'Template created successfully', 'template': template_data}), 201
         
     except Exception as e:
-        print(f"❌ Error creating template: {e}")
+        logging.error(f"❌ Error creating template: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/templates/<int:template_id>', methods=['PUT'])
@@ -717,6 +753,7 @@ def update_template(template_id):
                 file = request.files['file']
                 if file.filename != '':
                     # Create attachments directory if it doesn't exist
+                    # TODO: store in persistent object store (S3/R2) — local filesystem is ephemeral on Render
                     attachments_dir = Path("Templates/attachments")
                     attachments_dir.mkdir(exist_ok=True)
                     
@@ -731,7 +768,7 @@ def update_template(template_id):
                     
                     attachment_path = str(file_path)
                     attachment_name = file.filename
-                    print(f"✅ New attachment uploaded: {attachment_name}")
+                    logging.debug(f"✅ New attachment uploaded: {attachment_name}")
         else:
             # Handle JSON data (no file upload)
             data = request.json
@@ -778,11 +815,11 @@ def update_template(template_id):
             'updated_at': safe_isoformat(template.updated_at)
         }
         
-        print(f"✅ Template updated successfully: {template_name}")
+        logging.debug(f"✅ Template updated successfully: {template_name}")
         return jsonify({'message': 'Template updated successfully', 'template': template_data}), 200
         
     except Exception as e:
-        print(f"❌ Error updating template: {e}")
+        logging.error(f"❌ Error updating template: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/templates/<int:template_id>', methods=['DELETE'])
@@ -806,11 +843,11 @@ def delete_template(template_id):
         if not success:
             return jsonify({'error': 'Template not found'}), 404
         
-        print(f"✅ Template deleted successfully")
+        logging.debug(f"✅ Template deleted successfully")
         return jsonify({'message': 'Template deleted successfully'}), 200
 
     except Exception as e:
-        print(f"❌ Error deleting template: {e}")
+        logging.error(f"❌ Error deleting template: {e}")
 
         # Provide more specific error messages
         error_message = str(e)
@@ -852,7 +889,7 @@ def get_template(template_id):
             'updated_at': safe_isoformat(template.updated_at)
         })
     except Exception as e:
-        print(f"❌ Error getting template: {e}")
+        logging.error(f"❌ Error getting template: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/user/stats', methods=['GET'])
@@ -876,7 +913,7 @@ def get_user_stats():
         return jsonify(stats)
         
     except Exception as e:
-        print(f"❌ Error getting user stats: {e}")
+        logging.error(f"❌ Error getting user stats: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/dashboard/stats', methods=['GET'])
@@ -895,36 +932,36 @@ def get_dashboard_stats():
             return jsonify({'error': 'User not found'}), 404
         
         # Get template count with debug logging
-        print(f"🔍 === DASHBOARD STATS DEBUG ===")
-        print(f"🔍 User ID: {user.id}")
-        print(f"🔍 User Email: {user_email}")
-        print(f"🔍 Calling TemplateService.count_user_templates({user.id})")
+        logging.debug(f"🔍 === DASHBOARD STATS DEBUG ===")
+        logging.debug(f"🔍 User ID: {user.id}")
+        logging.debug(f"🔍 User Email: {user_email}")
+        logging.debug(f"🔍 Calling TemplateService.count_user_templates({user.id})")
         
         template_count = TemplateService.count_user_templates(user.id)
-        print(f"🔍 Template count returned: {template_count}")
+        logging.debug(f"🔍 Template count returned: {template_count}")
         
         # DIRECT DATABASE TEST - bypass the service layer
-        print(f"🔍 === DIRECT DATABASE TEST ===")
+        logging.debug(f"🔍 === DIRECT DATABASE TEST ===")
         from db.models import Template
         db = get_db_session()
         try:
             direct_count = db.query(Template).filter(Template.user_id == user.id).count()
-            print(f"🔍 Direct database count: {direct_count}")
+            logging.debug(f"🔍 Direct database count: {direct_count}")
             
             # Get all templates for this user
             user_templates = db.query(Template).filter(Template.user_id == user.id).all()
-            print(f"🔍 Direct database templates found: {len(user_templates)}")
+            logging.debug(f"🔍 Direct database templates found: {len(user_templates)}")
             for template in user_templates:
-                print(f"🔍   - Template: {template.name} (ID: {template.id})")
+                logging.debug(f"🔍   - Template: {template.name} (ID: {template.id})")
         finally:
             db.close()
-        print(f"🔍 =================================")
+        logging.debug(f"🔍 =================================")
         
         # Get email count (only sent emails)
-        print(f"🔍 Calling EmailLogService.get_user_stats({user.id})")
+        logging.debug(f"🔍 Calling EmailLogService.get_user_stats({user.id})")
         sent_emails = EmailLogService.get_user_stats(user.id)
-        print(f"🔍 Email stats returned: {sent_emails}")
-        print(f"🔍 =================================")
+        logging.debug(f"🔍 Email stats returned: {sent_emails}")
+        logging.debug(f"🔍 =================================")
         
         # Count orphaned email logs (emails with deleted templates)
         from db.models import EmailLog
@@ -943,7 +980,7 @@ def get_dashboard_stats():
         })
         
     except Exception as e:
-        print(f"❌ Error getting dashboard stats: {e}")
+        logging.error(f"❌ Error getting dashboard stats: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/template-attachment', methods=['POST'])
@@ -970,6 +1007,7 @@ def upload_template_attachment():
             return jsonify({'error': 'No file selected'}), 400
         
         # Create attachments directory if it doesn't exist
+        # TODO: store in persistent object store (S3/R2) — local filesystem is ephemeral on Render
         attachments_dir = Path("Templates/attachments")
         attachments_dir.mkdir(exist_ok=True)
         
@@ -991,24 +1029,16 @@ def upload_template_attachment():
         })
         
     except Exception as e:
-        print(f"❌ Error uploading attachment: {e}")
+        logging.error(f"❌ Error uploading attachment: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/debug/database', methods=['GET'])
 def debug_database():
-    """Debug endpoint to check database state"""
+    """Debug endpoint to check database state. Admin-only."""
+    _, error = require_admin()
+    if error:
+        return error
     try:
-        # Get user from session
-        user_info = session.get('user_info')
-        if not user_info:
-            return jsonify({'error': 'Not authenticated'}), 401
-        
-        user_email = user_info.get('email')
-        user = UserService.get_user_by_email(user_email)
-        
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
-        
         # Get database session and check directly
         from db.models import Template, User
         db = get_db_session()
@@ -1022,7 +1052,7 @@ def debug_database():
                     'email': u.email,
                     'name': u.name
                 })
-            
+
             # Check all templates
             all_templates = db.query(Template).all()
             template_list = []
@@ -1033,35 +1063,18 @@ def debug_database():
                     'name': t.name,
                     'subject': t.subject[:50] + '...' if len(t.subject) > 50 else t.subject
                 })
-            
-            # Check templates for this specific user
-            user_templates = db.query(Template).filter(Template.user_id == user.id).all()
-            user_template_list = []
-            for t in user_templates:
-                user_template_list.append({
-                    'id': t.id,
-                    'name': t.name,
-                    'subject': t.subject[:50] + '...' if len(t.subject) > 50 else t.subject
-                })
-            
+
             return jsonify({
-                'current_user': {
-                    'id': user.id,
-                    'email': user.email,
-                    'name': user.name
-                },
                 'all_users': user_list,
                 'all_templates': template_list,
-                'user_templates': user_template_list,
-                'user_template_count': len(user_templates),
                 'total_template_count': len(all_templates)
             })
-            
+
         finally:
             db.close()
-            
+
     except Exception as e:
-        print(f"❌ Error debugging database: {e}")
+        logging.error(f"Error debugging database: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/debug-csv', methods=['POST'])
@@ -1095,7 +1108,7 @@ def debug_csv():
                 try:
                     os.unlink(temp_file_path)
                 except OSError as e:
-                    print(f"⚠️ Warning: Could not delete temp file {temp_file_path}: {e}")
+                    logging.warning(f"⚠️ Warning: Could not delete temp file {temp_file_path}: {e}")
         
         if not contacts:
             return jsonify({'error': 'No contacts found in CSV file'}), 400
@@ -1129,7 +1142,7 @@ def debug_csv():
         })
         
     except Exception as e:
-        print(f"❌ Error analyzing CSV: {e}")
+        logging.error(f"❌ Error analyzing CSV: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/mail-merge', methods=['POST'])
@@ -1188,7 +1201,7 @@ def mail_merge_preview():
                 try:
                     os.unlink(temp_file_path)
                 except OSError as e:
-                    print(f"⚠️ Warning: Could not delete temp file {temp_file_path}: {e}")
+                    logging.warning(f"⚠️ Warning: Could not delete temp file {temp_file_path}: {e}")
                     # Continue execution even if cleanup fails
         
         if not contacts:
@@ -1243,7 +1256,7 @@ def mail_merge_preview():
         })
         
     except Exception as e:
-        print(f"❌ Error generating mail merge preview: {e}")
+        logging.error(f"❌ Error generating mail merge preview: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/send-emails', methods=['POST'])
@@ -1251,19 +1264,19 @@ def send_emails():
     """Send emails using mail merge"""
     try:
         # Debug session information
-        print(f"🔍 === SEND-EMAILS DEBUG ===")
-        print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
-        print(f"🔍 Session keys: {list(session.keys())}")
-        print(f"🔍 User info in session: {session.get('user_info')}")
-        print(f"🔍 Credentials in session: {session.get('credentials')}")
-        print(f"🔍 Request cookies: {dict(request.cookies)}")
-        print(f"🔍 Request origin: {request.headers.get('Origin')}")
-        print(f"🔍 =========================")
+        logging.debug(f"🔍 === SEND-EMAILS DEBUG ===")
+        logging.debug(f"🔍 Session ID: {session.get('_id', 'No ID')}")
+        logging.debug(f"🔍 Session keys: {list(session.keys())}")
+        logging.debug(f"🔍 User info in session: {session.get('user_info')}")
+        logging.debug(f"🔍 Credentials in session: {session.get('credentials')}")
+        logging.debug(f"🔍 Request cookies: {dict(request.cookies)}")
+        logging.debug(f"🔍 Request origin: {request.headers.get('Origin')}")
+        logging.debug(f"🔍 =========================")
         
         # Get user from session
         user_info = session.get('user_info')
         if not user_info:
-            print("❌ No user_info found in session")
+            logging.error("❌ No user_info found in session")
             return jsonify({'error': 'Not authenticated'}), 401
         
         user_email = user_info.get('email')
@@ -1316,7 +1329,7 @@ def send_emails():
         # Get user credentials from session
         credentials_data = session.get('credentials')
         if not credentials_data:
-            print("❌ No credentials found in session")
+            logging.error("❌ No credentials found in session")
             return jsonify({
                 'error': 'No Gmail credentials found. Please sign in with Google again.',
                 'action': 'sign_in_required',
@@ -1331,8 +1344,8 @@ def send_emails():
         missing_fields = [field for field in required_fields if not credentials_data.get(field)]
         
         if missing_fields:
-            print(f"❌ Missing required credential fields: {missing_fields}")
-            print(f"🔍 Available fields: {list(credentials_data.keys())}")
+            logging.error(f"❌ Missing required credential fields: {missing_fields}")
+            logging.debug(f"🔍 Available fields: {list(credentials_data.keys())}")
             return jsonify({
                 'error': f'Missing required Gmail credentials: {missing_fields}. Please sign in with Google again.',
                 'action': 'reauth_required',
@@ -1350,9 +1363,9 @@ def send_emails():
                 client_secret=credentials_data['client_secret'],
                 scopes=credentials_data['scopes']
             )
-            print(f"✅ Credentials object recreated successfully")
+            logging.debug(f"✅ Credentials object recreated successfully")
         except Exception as e:
-            print(f"❌ Error recreating credentials: {e}")
+            logging.error(f"❌ Error recreating credentials: {e}")
             return jsonify({'error': 'Failed to recreate Gmail credentials. Please sign in with Google again.'}), 401
         
         # Process each contact
@@ -1378,20 +1391,20 @@ def send_emails():
                 email_subject = replace_template_variables(template.subject, contact)
                 
                 # Debug logging to verify variable replacement
-                print(f"🔍 Debug: Original subject: {template.subject}")
-                print(f"🔍 Debug: Processed subject: {email_subject}")
-                print(f"🔍 Debug: Original content: {template.content[:100]}...")
-                print(f"🔍 Debug: Processed content: {email_content[:100]}...")
-                print(f"🔍 Debug: User info - ID: {user.id}, Name: '{user.name}', Email: {user.email}")
+                logging.debug(f"🔍 Debug: Original subject: {template.subject}")
+                logging.debug(f"🔍 Debug: Processed subject: {email_subject}")
+                logging.debug(f"🔍 Debug: Original content: {template.content[:100]}...")
+                logging.debug(f"🔍 Debug: Processed content: {email_content[:100]}...")
+                logging.debug(f"🔍 Debug: User info - ID: {user.id}, Name: '{user.name}', Email: {user.email}")
                 
                 # Clear explanation of how sender name works
-                print(f"📧 ===== EMAIL SENDING INFO =====")
-                print(f"📧 Database User Name: '{user.name}' (from name column)")
-                print(f"📧 Database User Email: {user.email}")
-                print(f"📧 Authenticated Gmail Account: {user.email}")
-                print(f"📧 Email will be sent FROM: {user.email} (your Gmail account)")
-                print(f"📧 Email will DISPLAY AS: '{user.name}' (hardcoded from database)")
-                print(f"📧 =================================")
+                logging.debug(f"📧 ===== EMAIL SENDING INFO =====")
+                logging.debug(f"📧 Database User Name: '{user.name}' (from name column)")
+                logging.debug(f"📧 Database User Email: {user.email}")
+                logging.debug(f"📧 Authenticated Gmail Account: {user.email}")
+                logging.debug(f"📧 Email will be sent FROM: {user.email} (your Gmail account)")
+                logging.debug(f"📧 Email will DISPLAY AS: '{user.name}' (hardcoded from database)")
+                logging.debug(f"📧 =================================")
                 
                 # Send email
                 sent_message = send_gmail(
@@ -1467,7 +1480,7 @@ def send_emails():
         })
         
     except Exception as e:
-        print(f"❌ Error sending emails: {e}")
+        logging.error(f"❌ Error sending emails: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -1484,7 +1497,7 @@ def get_campaigns():
         campaigns = CampaignService.get_user_campaigns(user.id)
         return jsonify([vars(c) for c in campaigns])
     except Exception as e:
-        print(f"❌ Error getting campaigns: {e}")
+        logging.error(f"❌ Error getting campaigns: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -1503,7 +1516,7 @@ def get_campaign(campaign_id):
             return jsonify({'error': 'Campaign not found'}), 404
         return jsonify(vars(campaign))
     except Exception as e:
-        print(f"❌ Error getting campaign: {e}")
+        logging.error(f"❌ Error getting campaign: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -1522,7 +1535,7 @@ def cancel_campaign(campaign_id):
             return jsonify({'error': 'Campaign not found or cannot be cancelled (only scheduled campaigns can be cancelled)'}), 404
         return jsonify({'message': 'Campaign cancelled successfully'})
     except Exception as e:
-        print(f"❌ Error cancelling campaign: {e}")
+        logging.error(f"❌ Error cancelling campaign: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -1535,11 +1548,14 @@ def process_scheduled_campaigns():
     OR the request must come from an authenticated session (frontend fallback).
     """
     cron_secret = os.environ.get('CRON_SECRET')
-    if cron_secret:
-        provided = request.headers.get('X-Cron-Secret', '')
-        authenticated_session = bool(session.get('user_info'))
-        if provided != cron_secret and not authenticated_session:
-            return jsonify({'error': 'Unauthorized'}), 401
+    if not cron_secret:
+        logging.error("CRON_SECRET env var is not set; refusing to process scheduled campaigns")
+        return jsonify({'error': 'Cron processing is not configured'}), 503
+
+    provided = request.headers.get('X-Cron-Secret', '')
+    authenticated_session = bool(session.get('user_info'))
+    if provided != cron_secret and not authenticated_session:
+        return jsonify({'error': 'Unauthorized'}), 401
 
     try:
         due_campaigns = CampaignService.get_due_campaigns()
@@ -1683,7 +1699,7 @@ def process_scheduled_campaigns():
         return jsonify({'message': f'Processed {processed} campaign(s)', 'processed': processed, 'errors': errors})
 
     except Exception as e:
-        print(f"❌ Error processing scheduled campaigns: {e}")
+        logging.error(f"❌ Error processing scheduled campaigns: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -1727,7 +1743,7 @@ def get_email_history():
         )
         return jsonify(result)
     except Exception as e:
-        print(f"❌ Error getting email history: {e}")
+        logging.error(f"❌ Error getting email history: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -1749,7 +1765,7 @@ def get_email_history_grouped():
         groups = EmailLogService.get_grouped_summary(user.id, group_by)
         return jsonify({'group_by': group_by, 'groups': groups})
     except Exception as e:
-        print(f"❌ Error getting grouped email history: {e}")
+        logging.error(f"❌ Error getting grouped email history: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -1789,7 +1805,7 @@ def get_email_history_group_detail(group_type, group_id):
         )
         return jsonify(result)
     except Exception as e:
-        print(f"❌ Error getting group detail: {e}")
+        logging.error(f"❌ Error getting group detail: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -1868,18 +1884,16 @@ def send_test_email():
             'message_id': sent_message.get('id')
         })
     except Exception as e:
-        print(f"❌ Error sending test email: {e}")
+        logging.error(f"❌ Error sending test email: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/debug/credentials', methods=['GET'])
 def debug_credentials():
-    """Debug endpoint to check what credentials are stored in session"""
+    """Debug endpoint to check what credentials are stored in session. Admin-only."""
+    user_info, error = require_admin()
+    if error:
+        return error
     try:
-        # Get user from session
-        user_info = session.get('user_info')
-        if not user_info:
-            return jsonify({'error': 'Not authenticated'}), 401
-        
         credentials_data = session.get('credentials')
         if not credentials_data:
             return jsonify({'error': 'No credentials found in session'}), 401
@@ -1906,25 +1920,25 @@ def debug_credentials():
         })
         
     except Exception as e:
-        print(f"❌ Error debugging credentials: {e}")
+        logging.error(f"❌ Error debugging credentials: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/auth/user')
 def get_user():
     """Get current authenticated user information"""
-    print(f"🔍 /auth/user endpoint called")
-    print(f"🔍 Request origin: {request.headers.get('Origin')}")
-    print(f"🔍 Request cookies: {dict(request.cookies)}")
-    print(f"🔍 Session contents: {list(session.keys())}")
-    print(f"🔍 User info in session: {session.get('user_info')}")
-    print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
+    logging.debug(f"🔍 /auth/user endpoint called")
+    logging.debug(f"🔍 Request origin: {request.headers.get('Origin')}")
+    logging.debug(f"🔍 Request cookies: {dict(request.cookies)}")
+    logging.debug(f"🔍 Session contents: {list(session.keys())}")
+    logging.debug(f"🔍 User info in session: {session.get('user_info')}")
+    logging.debug(f"🔍 Session ID: {session.get('_id', 'No ID')}")
     
     user_info = session.get('user_info')
     if not user_info:
-        print(f"❌ No user_info in session")
+        logging.error(f"❌ No user_info in session")
         return jsonify({'error': 'Not authenticated'}), 401
     
-    print(f"✅ User authenticated: {user_info.get('email')}")
+    logging.debug(f"✅ User authenticated: {user_info.get('email')}")
     return jsonify({
         'id': user_info.get('id'),
         'email': user_info.get('email'),
@@ -1938,19 +1952,19 @@ def logout():
     try:
         # Get user info before clearing for logging
         user_email = session.get('user_info', {}).get('email', 'Unknown')
-        print(f"🔍 Logging out user: {user_email}")
+        logging.debug(f"🔍 Logging out user: {user_email}")
         
         # Clear all session data
         session.clear()
         
-        print(f"✅ Session cleared for user: {user_email}")
+        logging.debug(f"✅ Session cleared for user: {user_email}")
         return jsonify({
             'message': 'Logged out successfully',
             'user': user_email,
             'note': 'All session data and OAuth tokens have been cleared. You will need to sign in again to use Gmail features.'
         })
     except Exception as e:
-        print(f"❌ Error during logout: {e}")
+        logging.error(f"❌ Error during logout: {e}")
         # Still try to clear session even if there's an error
         session.clear()
         return jsonify({'message': 'Logged out (with errors)', 'error': str(e)}), 500
@@ -1960,18 +1974,18 @@ def force_reauth():
     """Force user to re-authenticate by clearing credentials and redirecting to OAuth"""
     try:
         user_email = session.get('user_info', {}).get('email', 'Unknown')
-        print(f"🔍 Force re-authentication for user: {user_email}")
+        logging.debug(f"🔍 Force re-authentication for user: {user_email}")
         
         # Clear only credentials, keep user info for the OAuth flow
         if 'credentials' in session:
             del session['credentials']
-            print(f"✅ Credentials cleared for user: {user_email}")
+            logging.debug(f"✅ Credentials cleared for user: {user_email}")
         
         # Redirect to OAuth flow
         return redirect('/auth/google')
         
     except Exception as e:
-        print(f"❌ Error during force re-auth: {e}")
+        logging.error(f"❌ Error during force re-auth: {e}")
         return jsonify({'error': 'Failed to force re-authentication'}), 500
 
 @app.route('/auth/validate-credentials')
@@ -2043,16 +2057,12 @@ def validate_credentials():
 
 @app.route('/auth/debug-session')
 def debug_session():
-    """Debug endpoint to check session state"""
-    print(f"🔍 === SESSION DEBUG ENDPOINT ===")
-    print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
-    print(f"🔍 Session keys: {list(session.keys())}")
-    print(f"🔍 User info: {session.get('user_info')}")
-    print(f"🔍 Credentials: {session.get('credentials')}")
-    print(f"🔍 Request cookies: {dict(request.cookies)}")
-    print(f"🔍 Request origin: {request.headers.get('Origin')}")
-    print(f"🔍 ==============================")
-    
+    """Debug endpoint to check session state. Admin-only."""
+    _, error = require_admin()
+    if error:
+        return error
+    logging.debug("Session debug endpoint accessed by admin")
+
     credentials_data = session.get('credentials', {})
     required_fields = ['token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']
     missing_fields = [field for field in required_fields if not credentials_data.get(field)]
@@ -2156,53 +2166,48 @@ def google_auth():
         session['oauth_state'] = state
         session['code_verifier'] = flow.code_verifier
         
-        print(f"🔍 OAuth initiated - State: {state}")
-        print(f"🔍 Authorization URL: {authorization_url}")
+        logging.debug(f"🔍 OAuth initiated - State: {state}")
+        logging.debug(f"🔍 Authorization URL: {authorization_url}")
         
         # Redirect directly to Google's OAuth page
         return redirect(authorization_url)
         
     except Exception as e:
-        print(f"Error creating OAuth flow: {e}")
+        logging.error(f"Error creating OAuth flow: {e}")
         return jsonify({'error': 'Failed to initiate OAuth flow'}), 500
 
 @app.route('/auth/google/callback')
 def google_callback():
     """Handle Google OAuth callback"""
     try:
-        print("🔄 OAuth callback started...")
+        logging.debug("🔄 OAuth callback started...")
         
         # Get authorization code from callback
         code = request.args.get('code')
         state = request.args.get('state')
         
-        print(f"🔍 Received code: {code[:20]}..." if code else "❌ No code received")
-        print(f"🔍 Received state: {state}")
-        print(f"🔍 Session state: {session.get('oauth_state')}")
+        logging.error(f"🔍 Received code: {code[:20]}..." if code else "❌ No code received")
+        logging.debug(f"🔍 Received state: {state}")
+        logging.debug(f"🔍 Session state: {session.get('oauth_state')}")
         
         # Check if we have a code
         if not code:
-            print("❌ No authorization code received")
+            logging.error("❌ No authorization code received")
             return jsonify({'error': 'No authorization code received'}), 400
         
         # Verify state matches
         session_state = session.get('oauth_state')
         if state != session_state:
-            print(f"❌ State mismatch! Received: {state}, Session: {session_state}")
-            print(f"🔍 Session keys: {list(session.keys())}")
-            print(f"🔍 Session ID: {session.get('_id', 'No ID')}")
-            
-            # For development/testing, we'll be more lenient
-            # In production, you should enforce strict state validation
-            print("⚠️  Proceeding despite state mismatch for development testing...")
-        
-        print("✅ State verified")
+            logging.error("OAuth state mismatch - aborting callback (possible CSRF)")
+            return jsonify({'error': 'Invalid OAuth state'}), 400
+
+        logging.debug("OAuth state verified")
         
         # Create flow and exchange code for tokens
-        print("🔄 Creating OAuth flow...")
+        logging.debug("🔄 Creating OAuth flow...")
         flow = create_flow()
         flow.redirect_uri = GOOGLE_REDIRECT_URI
-        print(f"🔍 Redirect URI: {GOOGLE_REDIRECT_URI}")
+        logging.debug(f"🔍 Redirect URI: {GOOGLE_REDIRECT_URI}")
         
         # Restore the PKCE code_verifier from the session so Google accepts the exchange
         code_verifier = session.get('code_verifier')
@@ -2210,23 +2215,23 @@ def google_callback():
             flow.code_verifier = code_verifier
 
         # Exchange authorization code for tokens
-        print("🔄 Exchanging code for tokens...")
+        logging.debug("🔄 Exchanging code for tokens...")
         flow.fetch_token(code=code)
         credentials = flow.credentials
-        print("✅ Tokens received successfully")
+        logging.debug("✅ Tokens received successfully")
         
         # Debug credential details
-        print(f"🔍 Credential details:")
-        print(f"🔍 - Has token: {'Yes' if credentials.token else 'No'}")
-        print(f"🔍 - Has refresh_token: {'Yes' if credentials.refresh_token else 'No'}")
-        print(f"🔍 - Token URI: {credentials.token_uri}")
-        print(f"🔍 - Client ID: {credentials.client_id}")
-        print(f"🔍 - Has client_secret: {'Yes' if credentials.client_secret else 'No'}")
-        print(f"🔍 - Scopes: {credentials.scopes}")
+        logging.debug(f"🔍 Credential details:")
+        logging.debug(f"🔍 - Has token: {'Yes' if credentials.token else 'No'}")
+        logging.debug(f"🔍 - Has refresh_token: {'Yes' if credentials.refresh_token else 'No'}")
+        logging.debug(f"🔍 - Token URI: {credentials.token_uri}")
+        logging.debug(f"🔍 - Client ID: {credentials.client_id}")
+        logging.debug(f"🔍 - Has client_secret: {'Yes' if credentials.client_secret else 'No'}")
+        logging.debug(f"🔍 - Scopes: {credentials.scopes}")
         
         # Handle scope differences (Google might add 'openid' automatically)
-        print(f"🔍 Received scopes: {credentials.scopes}")
-        print(f"🔍 Expected scopes: {SCOPES}")
+        logging.debug(f"🔍 Received scopes: {credentials.scopes}")
+        logging.debug(f"🔍 Expected scopes: {SCOPES}")
         
         # Check if we have the minimum required scopes
         # We need these specific scopes for the app to work
@@ -2243,55 +2248,55 @@ def google_callback():
             
             # Check if we have the full scope URL
             if required_scope in credentials.scopes:
-                print(f"✅ Found full scope: {required_scope}")
+                logging.debug(f"✅ Found full scope: {required_scope}")
                 continue
                 
             # Check if we have the basic equivalent (e.g., 'email' for 'userinfo.email')
             if scope_name in credentials.scopes:
-                print(f"✅ Found basic scope equivalent: {scope_name} for {required_scope}")
+                logging.debug(f"✅ Found basic scope equivalent: {scope_name} for {required_scope}")
                 continue
                 
             # Check for other variations
             if 'gmail.send' in required_scope and any('gmail' in s for s in credentials.scopes):
-                print(f"✅ Found Gmail scope variation")
+                logging.debug(f"✅ Found Gmail scope variation")
                 continue
                 
             if 'userinfo' in required_scope and any('profile' in s or 'email' in s for s in credentials.scopes):
-                print(f"✅ Found userinfo scope variation")
+                logging.debug(f"✅ Found userinfo scope variation")
                 continue
                 
             missing_scopes.append(required_scope)
-            print(f"❌ Missing scope: {required_scope}")
+            logging.error(f"❌ Missing scope: {required_scope}")
         
         if missing_scopes:
-            print(f"⚠️  Missing required scopes: {missing_scopes}")
+            logging.warning(f"⚠️  Missing required scopes: {missing_scopes}")
             return jsonify({'error': f'Missing required scopes: {missing_scopes}'}), 400
         
-        print("✅ All required scopes are present!")
+        logging.debug("✅ All required scopes are present!")
         
         # Check if we have a refresh token - this is critical for long-term access
         if not credentials.refresh_token:
-            print("❌ CRITICAL: No refresh token received from Google!")
-            print("❌ This usually means the user needs to re-authorize with explicit consent")
-            print("❌ The 'prompt=consent' parameter should force this, but it may not work for existing users")
+            logging.error("❌ CRITICAL: No refresh token received from Google!")
+            logging.error("❌ This usually means the user needs to re-authorize with explicit consent")
+            logging.error("❌ The 'prompt=consent' parameter should force this, but it may not work for existing users")
             return jsonify({
                 'error': 'No refresh token received. This usually happens when re-authorizing an existing user. Please try signing out completely and signing in again, or use a different Google account.',
                 'details': 'Google only provides refresh tokens on first authorization or when explicitly requested. Try signing out and signing in again.'
             }), 400
         
-        print("✅ Refresh token received successfully!")
+        logging.debug("✅ Refresh token received successfully!")
         
         # Get user information
-        print("🔄 Getting user information...")
+        logging.debug("🔄 Getting user information...")
         user_info = get_user_info(credentials)
         if not user_info:
-            print("❌ Failed to get user info from Google")
+            logging.error("❌ Failed to get user info from Google")
             return jsonify({'error': 'Failed to get user information from Google'}), 500
         
-        print(f"✅ User info received: {user_info.get('email', 'No email')}")
-        print(f"🔍 Full user_info from Google: {user_info}")
-        print(f"🔍 User name from Google: '{user_info.get('name', 'No name')}'")
-        print(f"🔍 User email from Google: '{user_info.get('email', 'No email')}'")
+        logging.debug(f"✅ User info received: {user_info.get('email', 'No email')}")
+        logging.debug(f"🔍 Full user_info from Google: {user_info}")
+        logging.debug(f"🔍 User name from Google: '{user_info.get('name', 'No name')}'")
+        logging.debug(f"🔍 User email from Google: '{user_info.get('email', 'No email')}'")
         
         # Store user info and tokens in session
         session['user_info'] = user_info
@@ -2305,12 +2310,12 @@ def google_callback():
         }
         
         # Debug session storage
-        print(f"🔍 === OAUTH CALLBACK DEBUG ===")
-        print(f"🔍 Session ID after storing: {session.get('_id', 'No ID')}")
-        print(f"🔍 Session keys after storing: {list(session.keys())}")
-        print(f"🔍 Credentials stored: {list(session.get('credentials', {}).keys())}")
-        print(f"🔍 Has refresh_token: {'Yes' if session.get('credentials', {}).get('refresh_token') else 'No'}")
-        print(f"🔍 ==============================")
+        logging.debug(f"🔍 === OAUTH CALLBACK DEBUG ===")
+        logging.debug(f"🔍 Session ID after storing: {session.get('_id', 'No ID')}")
+        logging.debug(f"🔍 Session keys after storing: {list(session.keys())}")
+        logging.debug(f"🔍 Credentials stored: {list(session.get('credentials', {}).keys())}")
+        logging.debug(f"🔍 Has refresh_token: {'Yes' if session.get('credentials', {}).get('refresh_token') else 'No'}")
+        logging.debug(f"🔍 ==============================")
         
         # Also store in our database system
         user_email = user_info.get('email')
@@ -2320,7 +2325,7 @@ def google_callback():
             # Check if we've reached the user limit
             if not UserService.is_user_registration_allowed(MAX_FREE_USERS):
                 current_count = UserService.get_total_user_count()
-                print(f"❌ User limit reached! Current users: {current_count}, Max allowed: {MAX_FREE_USERS}")
+                logging.error(f"❌ User limit reached! Current users: {current_count}, Max allowed: {MAX_FREE_USERS}")
                 return jsonify({
                     'error': f'Sorry! We have reached our limit of {MAX_FREE_USERS} free users. Please contact us for premium access.',
                     'user_limit_reached': True,
@@ -2330,26 +2335,26 @@ def google_callback():
             
             # Create new user from Google OAuth
             user_name = user_info.get('name', 'Google User')
-            print(f"🔍 Creating new user with name: '{user_name}' and email: '{user_email}'")
-            print(f"🔍 Current user count: {UserService.get_total_user_count()}/{MAX_FREE_USERS}")
+            logging.debug(f"🔍 Creating new user with name: '{user_name}' and email: '{user_email}'")
+            logging.debug(f"🔍 Current user count: {UserService.get_total_user_count()}/{MAX_FREE_USERS}")
             user = UserService.create_user(
                 email=user_email,
                 name=user_name,
                 is_google_user=True
             )
-            print(f"✅ Created new Google user: {user_email} with name: '{user.name}'")
-            print(f"✅ New user count: {UserService.get_total_user_count()}/{MAX_FREE_USERS}")
+            logging.debug(f"✅ Created new Google user: {user_email} with name: '{user.name}'")
+            logging.debug(f"✅ New user count: {UserService.get_total_user_count()}/{MAX_FREE_USERS}")
         else:
             # Update existing user
-            print(f"🔍 Updating existing user: {user_email}")
+            logging.debug(f"🔍 Updating existing user: {user_email}")
             user_name = user_info.get('name', 'Google User')
-            print(f"🔍 Updating user name to: '{user_name}'")
+            logging.debug(f"🔍 Updating user name to: '{user_name}'")
             user = UserService.update_user_google_oauth(existing_user.id, user_name)
-            print(f"✅ Updated existing user with Google OAuth: {user_email}")
-            print(f"🔍 User name after update: '{user.name}'")
+            logging.debug(f"✅ Updated existing user with Google OAuth: {user_email}")
+            logging.debug(f"🔍 User name after update: '{user.name}'")
         
-        print(f"✅ OAuth successful! User: {user_info.get('email')}")
-        print(f"✅ Session stored: {list(session.keys())}")
+        logging.debug(f"✅ OAuth successful! User: {user_info.get('email')}")
+        logging.debug(f"✅ Session stored: {list(session.keys())}")
 
         # Persist OAuth credentials to DB for scheduled send support
         user_id_to_persist = user.id if hasattr(user, 'id') and user.id else (existing_user.id if existing_user else None)
@@ -2362,7 +2367,7 @@ def google_callback():
         
     except Exception as e:
         import sys, traceback
-        print(f"Error in OAuth callback: {e}", flush=True)
+        logging.error(f"Error in OAuth callback: {e}")
         traceback.print_exc()
         sys.stderr.flush()
         return jsonify({'error': 'OAuth callback failed', 'details': str(e)}), 500
@@ -2382,14 +2387,16 @@ def get_user_limit_status():
             'message': f"{'Open' if is_registration_open else 'Closed'} for registration - {current_count}/{MAX_FREE_USERS} users"
         })
     except Exception as e:
-        print(f"Error getting user limit status: {e}")
+        logging.error(f"Error getting user limit status: {e}")
         return jsonify({'error': 'Failed to get user limit status'}), 500
 
 @app.route('/api/admin/users', methods=['GET'])
 def get_all_users():
-    """Admin endpoint to view all users (for monitoring)"""
+    """Admin endpoint to view all users (for monitoring). Admin-only."""
+    _, error = require_admin()
+    if error:
+        return error
     try:
-        # In production, you'd want proper admin authentication here
         db = get_db_session()
         try:
             users = db.query(User).order_by(User.created_at.desc()).all()
@@ -2403,7 +2410,7 @@ def get_all_users():
                     'created_at': safe_isoformat(user.created_at),
                     'updated_at': safe_isoformat(user.updated_at)
                 })
-            
+
             return jsonify({
                 'total_users': len(user_list),
                 'users': user_list
@@ -2411,11 +2418,11 @@ def get_all_users():
         finally:
             db.close()
     except Exception as e:
-        print(f"Error getting all users: {e}")
+        logging.error(f"Error getting all users: {e}")
         return jsonify({'error': 'Failed to get users'}), 500
 
 if __name__ == '__main__':
-    print("🚀 Starting InMailer Backend with Database...")
+    logging.debug("🚀 Starting InMailer Backend with Database...")
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') == 'development'
     app.run(debug=debug, host='0.0.0.0', port=port)

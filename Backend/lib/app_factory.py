@@ -1,4 +1,5 @@
 from datetime import timedelta
+import logging
 import os
 
 from flask import Flask, request
@@ -9,7 +10,10 @@ def create_app(initialize_callback):
     """Create and configure the Flask app."""
     app = Flask(__name__)
 
-    app.secret_key = os.getenv("SECRET_KEY", "inmailer-secret-key-change-in-production")
+    secret = os.getenv("SECRET_KEY")
+    if not secret:
+        raise RuntimeError("SECRET_KEY env var is required")
+    app.secret_key = secret
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=24)
 
     is_production = os.getenv("FLASK_ENV") == "production"
@@ -24,10 +28,8 @@ def create_app(initialize_callback):
 
     app.config["SESSION_COOKIE_HTTPONLY"] = True
 
-    print("📁 Using enhanced Flask sessions for better reliability")
-    print(
-        f"🔑 Secret key configured: {'Yes' if app.secret_key != 'inmailer-secret-key-change-in-production' else 'No (using default)'}"
-    )
+    logging.debug("Using enhanced Flask sessions for better reliability")
+    logging.debug("Secret key configured from environment")
 
     cors_origins = ["https://inmailer.vercel.app"]
     if os.getenv("FLASK_ENV") != "production":
