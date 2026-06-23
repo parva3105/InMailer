@@ -12,13 +12,14 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center">
-            <Mail className="w-5 h-5 text-white" />
+      <div className="auth-bg grid min-h-screen place-items-center p-4">
+        <div className="card flex w-full max-w-xs flex-col items-center p-8 text-center glow-indigo-sm">
+          <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-teal-300/20 bg-teal-400/15 text-teal-200">
+            <Mail className="h-6 w-6" />
           </div>
           <div className="spinner" />
-          <p className="text-sm text-zinc-500">Loading…</p>
+          <p className="mt-4 text-sm font-medium text-zinc-300">Loading workspace</p>
+          <p className="mt-1 text-xs text-zinc-600">Checking your session</p>
         </div>
       </div>
     );

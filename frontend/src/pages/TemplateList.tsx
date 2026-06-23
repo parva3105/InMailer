@@ -62,7 +62,7 @@ const TemplateList: React.FC = () => {
 
   return (
     <AppShell>
-      <div className="px-6 py-8 max-w-6xl mx-auto w-full">
+      <div className="app-container">
         {/* Page header */}
         <div className="page-header">
           <div>
@@ -117,11 +117,11 @@ const TemplateList: React.FC = () => {
         {!loading && !error && templates.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {templates.map(template => (
-              <div key={template.id} className="card p-5 flex flex-col hover:border-zinc-700 transition-all duration-200">
+              <div key={template.id} className="card p-5 flex flex-col hover:border-white/15 transition-all duration-200">
                 {/* Top row */}
                 <div className="flex items-start justify-between mb-4">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center flex-shrink-0">
-                    <FileText className="w-4 h-4 text-indigo-400" />
+                  <div className="w-8 h-8 rounded-lg bg-teal-400/10 border border-teal-300/20 flex items-center justify-center flex-shrink-0">
+                    <FileText className="w-4 h-4 text-teal-300" />
                   </div>
                   <span className="text-xs text-zinc-600">{formatDate(template.created_at)}</span>
                 </div>
@@ -144,7 +144,7 @@ const TemplateList: React.FC = () => {
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-2 mt-auto pt-4 border-t border-zinc-800">
+                <div className="flex items-center gap-2 mt-auto pt-4 border-t border-white/[0.08]">
                   <button
                     onClick={() => navigate(`/templates/${template.id}`)}
                     className="flex-1 btn-ghost text-zinc-500 py-2 text-xs"
@@ -154,7 +154,7 @@ const TemplateList: React.FC = () => {
                   </button>
                   <button
                     onClick={() => navigate(`/templates/${template.id}/edit`)}
-                    className="flex-1 btn-secondary text-xs py-2 text-indigo-400 border-indigo-500/20 bg-indigo-500/5 hover:bg-indigo-500/10"
+                    className="flex-1 btn-secondary text-xs py-2 text-teal-300 border-teal-300/20 bg-teal-400/5 hover:bg-teal-400/10"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                     Edit

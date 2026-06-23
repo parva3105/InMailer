@@ -175,7 +175,7 @@ const MailMerge: React.FC = () => {
           template_id: selectedTemplate.id,
           contacts,
           scheduled_at: new Date(scheduledAt).toISOString(),
-          campaign_name: campaignName || `Campaign – ${new Date(scheduledAt).toLocaleString()}`,
+          campaign_name: campaignName || `Campaign - ${new Date(scheduledAt).toLocaleString()}`,
         }),
       });
       if (response.ok) {
@@ -205,8 +205,8 @@ const MailMerge: React.FC = () => {
 
   const Step = ({ n, label }: { n: string; label: string }) => (
     <div className="flex items-center gap-2 mb-4">
-      <div className="w-6 h-6 rounded-full bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center flex-shrink-0">
-        <span className="text-xs font-bold text-indigo-400">{n}</span>
+      <div className="w-6 h-6 rounded-full bg-teal-400/15 border border-teal-300/25 flex items-center justify-center flex-shrink-0">
+        <span className="text-xs font-bold text-teal-300">{n}</span>
       </div>
       <span className="text-sm font-semibold text-zinc-200">{label}</span>
     </div>
@@ -214,7 +214,7 @@ const MailMerge: React.FC = () => {
 
   return (
     <AppShell>
-      <div className="px-6 py-8 max-w-6xl mx-auto w-full">
+      <div className="app-container">
         {/* Header */}
         <div className="mb-8">
           <h1 className="page-title">Mail Merge</h1>
@@ -238,11 +238,11 @@ const MailMerge: React.FC = () => {
                     id="csv-upload"
                   />
                   <label htmlFor="csv-upload" className="cursor-pointer flex flex-col items-center">
-                    <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center mb-3">
+                    <div className="w-10 h-10 rounded-xl bg-white/[0.055] border border-white/10 flex items-center justify-center mb-3">
                       <Upload className="w-5 h-5 text-zinc-500" />
                     </div>
                     <p className="text-sm text-zinc-400 mb-1">
-                      <span className="text-indigo-400 font-medium">Click to upload</span> or drag and drop
+                      <span className="text-teal-300 font-medium">Click to upload</span> or drag and drop
                     </p>
                     <p className="text-xs text-zinc-600">CSV files only</p>
                   </label>
@@ -267,7 +267,7 @@ const MailMerge: React.FC = () => {
 
               <button
                 onClick={downloadSampleCSV}
-                className="mt-3 flex items-center gap-1.5 text-xs text-zinc-600 hover:text-indigo-400 transition-colors"
+                className="mt-3 flex items-center gap-1.5 text-xs text-zinc-600 hover:text-teal-300 transition-colors"
               >
                 <Download className="w-3.5 h-3.5" />
                 Download sample CSV format
@@ -278,8 +278,8 @@ const MailMerge: React.FC = () => {
             <div className="card p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center flex-shrink-0">
-                    <span className="text-xs font-bold text-indigo-400">2</span>
+                  <div className="w-6 h-6 rounded-full bg-teal-400/15 border border-teal-300/25 flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs font-bold text-teal-300">2</span>
                   </div>
                   <span className="text-sm font-semibold text-zinc-200">Select template</span>
                 </div>
@@ -316,8 +316,8 @@ const MailMerge: React.FC = () => {
                       key={template.id}
                       className={`p-3.5 rounded-lg border cursor-pointer transition-all duration-150 ${
                         selectedTemplate?.id === template.id
-                          ? 'border-indigo-500/40 bg-indigo-500/8'
-                          : 'border-zinc-800 hover:border-zinc-700'
+                          ? 'border-teal-300/40 bg-teal-400/[0.08]'
+                          : 'border-white/[0.08] hover:border-white/15'
                       }`}
                     >
                       <div className="flex items-center justify-between">
@@ -325,18 +325,18 @@ const MailMerge: React.FC = () => {
                           <p className="text-sm font-medium text-zinc-200 truncate">{template.name}</p>
                           <p className="text-xs text-zinc-500 truncate mt-0.5">{template.subject}</p>
                           {template.attachment_name && (
-                            <p className="text-xs text-emerald-500 mt-0.5">📎 {template.attachment_name}</p>
+                            <p className="text-xs text-emerald-500 mt-0.5">Attachment: {template.attachment_name}</p>
                           )}
                         </div>
                         <div className="flex items-center gap-1.5 ml-2">
                           {selectedTemplate?.id === template.id && (
-                            <div className="w-4 h-4 rounded-full bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center">
-                              <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                            <div className="w-4 h-4 rounded-full bg-teal-400/20 border border-teal-300/40 flex items-center justify-center">
+                              <div className="w-1.5 h-1.5 rounded-full bg-teal-300" />
                             </div>
                           )}
                           <button
                             onClick={(e) => { e.stopPropagation(); navigate(`/templates/${template.id}/edit`); }}
-                            className="p-1 rounded text-zinc-600 hover:text-indigo-400 hover:bg-indigo-500/5 transition-colors"
+                            className="p-1 rounded text-zinc-600 hover:text-teal-300 hover:bg-teal-400/5 transition-colors"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
@@ -377,7 +377,7 @@ const MailMerge: React.FC = () => {
                     {isProcessing ? (
                       <>
                         <div className="spinner w-4 h-4" style={{ width: 16, height: 16, borderWidth: 2, borderTopColor: 'white' }} />
-                        Processing…
+                        Processing...
                       </>
                     ) : (
                       <>
@@ -389,7 +389,7 @@ const MailMerge: React.FC = () => {
                 )}
 
                 {/* Schedule toggle */}
-                <div className="rounded-lg border border-zinc-800 p-4">
+                <div className="rounded-lg border border-white/[0.08] p-4">
                   <button
                     onClick={() => setIsScheduled(v => !v)}
                     className="flex items-center justify-between w-full mb-0"
@@ -398,7 +398,7 @@ const MailMerge: React.FC = () => {
                       <Calendar className="w-4 h-4 text-zinc-500" />
                       <span className="text-sm font-medium text-zinc-300">Schedule for later</span>
                     </div>
-                    <div className={`w-9 h-5 rounded-full border transition-colors duration-200 flex items-center px-0.5 ${isScheduled ? 'bg-indigo-600 border-indigo-500' : 'bg-zinc-800 border-zinc-700'}`}>
+                    <div className={`w-9 h-5 rounded-full border transition-colors duration-200 flex items-center px-0.5 ${isScheduled ? 'bg-teal-500 border-teal-400' : 'bg-white/[0.055] border-white/10'}`}>
                       <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200 ${isScheduled ? 'translate-x-4' : 'translate-x-0'}`} />
                     </div>
                   </button>
@@ -431,7 +431,7 @@ const MailMerge: React.FC = () => {
                         className="btn-primary w-full"
                       >
                         {isProcessing ? (
-                          <><div className="spinner w-4 h-4" style={{ width: 16, height: 16, borderWidth: 2 }} /> Scheduling…</>
+                          <><div className="spinner w-4 h-4" style={{ width: 16, height: 16, borderWidth: 2 }} /> Scheduling...</>
                         ) : (
                           <><Calendar className="w-4 h-4" /> Schedule {contacts.length > 0 ? contacts.length : ''} emails</>
                         )}
@@ -443,7 +443,7 @@ const MailMerge: React.FC = () => {
             </div>
           </div>
 
-          {/* Right column — Preview */}
+          {/* Right column - Preview */}
           <div className="card p-6 flex flex-col">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-sm font-semibold text-zinc-200">Preview</h2>
@@ -453,15 +453,15 @@ const MailMerge: React.FC = () => {
             </div>
 
             {previewData.length > 0 && selectedTemplate && (
-              <div className="mb-4 p-3 rounded-lg bg-indigo-500/5 border border-indigo-500/20">
-                <p className="text-xs font-medium text-indigo-400">{selectedTemplate.name}</p>
+              <div className="mb-4 p-3 rounded-lg bg-teal-400/5 border border-teal-300/20">
+                <p className="text-xs font-medium text-teal-300">{selectedTemplate.name}</p>
                 <p className="text-xs text-zinc-600 mt-0.5">Showing preview for first {previewData.length} contacts</p>
               </div>
             )}
 
             {previewData.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center py-16">
-                <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center mb-3">
+                <div className="w-10 h-10 rounded-xl bg-white/[0.055] border border-white/10 flex items-center justify-center mb-3">
                   <Eye className="w-5 h-5 text-zinc-600" />
                 </div>
                 <p className="text-sm text-zinc-500">Upload a CSV and select a template, then generate a preview</p>
@@ -476,14 +476,14 @@ const MailMerge: React.FC = () => {
                   const contentPreview = result.content_preview || result.content?.substring(0, 150) + '...' || 'No content';
 
                   return (
-                    <div key={index} className="rounded-lg border border-zinc-800 p-4 hover:border-zinc-700 transition-colors">
+                    <div key={index} className="rounded-lg border border-white/[0.08] p-4 hover:border-white/15 transition-colors">
                       {/* Contact header */}
                       <div className="flex items-start justify-between mb-3">
                         <div>
                           <p className="text-sm font-medium text-zinc-200">{contactName}</p>
                           <p className="text-xs text-zinc-500 mt-0.5">{contactEmail}</p>
                           {contactCompany && (
-                            <p className="text-xs text-indigo-400 mt-0.5">{contactCompany}</p>
+                            <p className="text-xs text-teal-300 mt-0.5">{contactCompany}</p>
                           )}
                         </div>
                         <span className={`badge text-xs ${result.status === 'preview' ? 'badge-indigo' : 'badge-zinc'}`}>
@@ -492,20 +492,20 @@ const MailMerge: React.FC = () => {
                       </div>
 
                       {/* Subject */}
-                      <div className="mb-2.5 px-3 py-2 rounded-md bg-zinc-950/60 border border-zinc-800">
+                      <div className="mb-2.5 px-3 py-2 rounded-md bg-black/20 border border-white/[0.08]">
                         <p className="text-xs text-zinc-600 mb-0.5 uppercase tracking-wide">Subject</p>
                         <p className="text-xs font-medium text-zinc-300">{subject}</p>
                       </div>
 
                       {/* Preview */}
-                      <div className="px-3 py-2 rounded-md bg-zinc-950/60 border border-zinc-800">
+                      <div className="px-3 py-2 rounded-md bg-black/20 border border-white/[0.08]">
                         <p className="text-xs text-zinc-600 mb-1 uppercase tracking-wide">Preview</p>
                         <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-line">{contentPreview}</p>
                       </div>
 
                       {selectedTemplate?.attachment_name && (
                         <div className="mt-2.5 flex items-center gap-1.5 text-xs text-emerald-500">
-                          <span>📎</span> {selectedTemplate.attachment_name}
+                          <span>Attachment:</span> {selectedTemplate.attachment_name}
                         </div>
                       )}
                     </div>

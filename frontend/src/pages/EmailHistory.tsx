@@ -71,12 +71,12 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function TemplateBadge({ name }: { name: string | null }) {
-  if (!name) return <span className="badge badge-zinc text-zinc-600">—</span>;
+  if (!name) return <span className="badge badge-zinc text-zinc-600">-</span>;
   return <span className="badge badge-indigo max-w-[120px] truncate" title={name}>{name}</span>;
 }
 
 function CampaignBadge({ name }: { name: string | null }) {
-  if (!name) return <span className="badge badge-zinc text-zinc-600">—</span>;
+  if (!name) return <span className="badge badge-zinc text-zinc-600">-</span>;
   return <span className="badge bg-violet-500/10 text-violet-400 border border-violet-500/20 max-w-[120px] truncate" title={name}>{name}</span>;
 }
 
@@ -85,7 +85,7 @@ function SkeletonRow() {
     <tr className="animate-pulse">
       {[...Array(6)].map((_, i) => (
         <td key={i} className="px-4 py-3">
-          <div className="h-3.5 bg-zinc-800 rounded w-3/4" />
+          <div className="h-3.5 bg-white/[0.055] rounded w-3/4" />
         </td>
       ))}
     </tr>
@@ -93,12 +93,12 @@ function SkeletonRow() {
 }
 
 function formatDate(iso: string | null) {
-  if (!iso) return '—';
+  if (!iso) return '-';
   return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function formatShortDate(iso: string | null) {
-  if (!iso) return '—';
+  if (!iso) return '-';
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
@@ -209,7 +209,7 @@ export default function EmailHistory() {
 
   return (
     <AppShell>
-      <div className="px-6 py-8 max-w-7xl mx-auto w-full">
+      <div className="app-container">
         {/* Header */}
         <div className="mb-8">
           <h1 className="page-title">Email History</h1>
@@ -217,14 +217,14 @@ export default function EmailHistory() {
         </div>
 
         {/* Tab switcher */}
-        <div className="flex border-b border-zinc-800 mb-6">
+        <div className="flex border-b border-white/[0.08] mb-6">
           {(['all', 'grouped'] as ActiveTab[]).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors capitalize ${
                 activeTab === tab
-                  ? 'border-indigo-500 text-indigo-400'
+                  ? 'border-teal-400 text-teal-300'
                   : 'border-transparent text-zinc-500 hover:text-zinc-300'
               }`}
             >
@@ -233,7 +233,7 @@ export default function EmailHistory() {
           ))}
         </div>
 
-        {/* ── All Emails Tab ────────────────────────────────────────────── */}
+        
         {activeTab === 'all' && (
           <div>
             {/* Filter bar */}
@@ -242,7 +242,7 @@ export default function EmailHistory() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600 pointer-events-none" />
                 <input
                   type="text"
-                  placeholder="Search recipient or subject…"
+                  placeholder="Search recipient or subject..."
                   value={searchInput}
                   onChange={e => handleSearchChange(e.target.value)}
                   className="input pl-9"
@@ -265,7 +265,7 @@ export default function EmailHistory() {
               >
                 <option value="sent_at_desc">Newest first</option>
                 <option value="sent_at_asc">Oldest first</option>
-                <option value="recipient_email_asc">Recipient A–Z</option>
+                <option value="recipient_email_asc">Recipient A-Z</option>
               </select>
             </div>
 
@@ -276,10 +276,10 @@ export default function EmailHistory() {
               </div>
             )}
 
-            <div className="card overflow-hidden">
+            <div className="table-shell">
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="border-b border-zinc-800">
+                  <thead className="table-head">
                     <tr>
                       <th className={thCls}>Recipient</th>
                       <th className={thCls}>Subject</th>
@@ -289,13 +289,13 @@ export default function EmailHistory() {
                       <th className={thCls}>Sent at</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-800/60">
+                  <tbody className="divide-y divide-white/[0.08]">
                     {historyLoading && [1, 2, 3].map(n => <SkeletonRow key={n} />)}
                     {!historyLoading && !historyError && history?.emails.length === 0 && (
                       <tr>
                         <td colSpan={6} className="px-4 py-16 text-center">
                           <div className="flex flex-col items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center">
+                            <div className="w-10 h-10 rounded-xl bg-white/[0.055] border border-white/10 flex items-center justify-center">
                               <Clock className="w-5 h-5 text-zinc-600" />
                             </div>
                             <div>
@@ -310,7 +310,7 @@ export default function EmailHistory() {
                       </tr>
                     )}
                     {!historyLoading && history?.emails.map(email => (
-                      <tr key={email.id} className="hover:bg-zinc-800/30 transition-colors">
+                      <tr key={email.id} className="hover:bg-white/[0.035] transition-colors">
                         <td className={`${tdCls} text-zinc-300 max-w-[160px] truncate`} title={email.recipient_email}>{email.recipient_email}</td>
                         <td className={`${tdCls} text-zinc-400 max-w-[180px] truncate`} title={email.subject}>{email.subject}</td>
                         <td className={tdCls}><TemplateBadge name={email.template_name} /></td>
@@ -324,13 +324,13 @@ export default function EmailHistory() {
               </div>
 
               {history && history.total > 0 && (
-                <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
-                  <span>Showing {showingFrom}–{showingTo} of {history.total}</span>
+                <div className="px-4 py-3 border-t border-white/[0.08] flex items-center justify-between text-xs text-zinc-500">
+                  <span>Showing {showingFrom}-{showingTo} of {history.total}</span>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setPage(p => Math.max(1, p - 1))}
                       disabled={page === 1}
-                      className="p-1.5 rounded-lg hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      className="p-1.5 rounded-lg hover:bg-white/[0.055] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
@@ -338,7 +338,7 @@ export default function EmailHistory() {
                     <button
                       onClick={() => setPage(p => Math.min(history.total_pages, p + 1))}
                       disabled={page === history.total_pages}
-                      className="p-1.5 rounded-lg hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      className="p-1.5 rounded-lg hover:bg-white/[0.055] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                     >
                       <ChevronRight className="w-4 h-4" />
                     </button>
@@ -349,7 +349,7 @@ export default function EmailHistory() {
           </div>
         )}
 
-        {/* ── Grouped View Tab ──────────────────────────────────────────── */}
+        
         {activeTab === 'grouped' && (
           <div>
             {/* Group-by pills */}
@@ -361,8 +361,8 @@ export default function EmailHistory() {
                   onClick={() => { setGroupBy(opt); setSelectedGroup(null); setGroupDetail(null); }}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors capitalize ${
                     groupBy === opt
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+                      ? 'bg-teal-500 text-zinc-950'
+                      : 'bg-white/[0.055] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200'
                   }`}
                 >
                   {opt}
@@ -382,9 +382,9 @@ export default function EmailHistory() {
                 <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
                   {groupsLoading && [1, 2, 3].map(n => (
                     <div key={n} className="w-52 card p-5 animate-pulse flex-shrink-0">
-                      <div className="h-3 bg-zinc-800 rounded mb-3 w-3/4" />
-                      <div className="h-8 bg-zinc-800 rounded mb-2 w-1/2" />
-                      <div className="h-2.5 bg-zinc-800/60 rounded w-full" />
+                      <div className="h-3 bg-white/[0.055] rounded mb-3 w-3/4" />
+                      <div className="h-8 bg-white/[0.055] rounded mb-2 w-1/2" />
+                      <div className="h-2.5 bg-white/[0.045] rounded w-full" />
                     </div>
                   ))}
                   {!groupsLoading && groups.length === 0 && (
@@ -396,9 +396,9 @@ export default function EmailHistory() {
                     <div
                       key={idx}
                       onClick={() => handleSelectGroup(group)}
-                      className={`w-52 flex-shrink-0 card p-5 cursor-pointer hover:border-zinc-700 transition-all duration-150 ${
+                      className={`w-52 flex-shrink-0 card p-5 cursor-pointer hover:border-white/15 transition-all duration-150 ${
                         selectedGroup?.group_id === group.group_id && selectedGroup?.group_name === group.group_name
-                          ? 'border-indigo-500/40 bg-indigo-500/5'
+                          ? 'border-teal-300/40 bg-teal-400/5'
                           : ''
                       }`}
                     >
@@ -406,8 +406,8 @@ export default function EmailHistory() {
                       <p className="text-2xl font-bold text-zinc-100 mb-0.5">{group.total}</p>
                       <p className="text-xs text-zinc-600 mb-3">total emails</p>
                       <div className="flex gap-3 text-xs">
-                        <span className="text-emerald-400 font-medium">✓ {group.success_count}</span>
-                        <span className="text-red-400 font-medium">✗ {group.error_count}</span>
+                        <span className="text-emerald-400 font-medium">sent {group.success_count}</span>
+                        <span className="text-red-400 font-medium">failed {group.error_count}</span>
                       </div>
                       <p className="text-xs text-zinc-700 mt-2">
                         {group.last_sent_at ? `Last: ${formatShortDate(group.last_sent_at)}` : 'No sends yet'}
@@ -420,15 +420,15 @@ export default function EmailHistory() {
 
             {/* Group detail */}
             {selectedGroup && (
-              <div className="card overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+              <div className="table-shell">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.08]">
                   <div>
                     <h3 className="text-sm font-semibold text-zinc-200">{selectedGroup.group_name}</h3>
                     <p className="text-xs text-zinc-500 mt-0.5">{selectedGroup.total} email{selectedGroup.total !== 1 ? 's' : ''}</p>
                   </div>
                   <button
                     onClick={() => { setSelectedGroup(null); setGroupDetail(null); }}
-                    className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                    className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.055] transition-colors"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -444,7 +444,7 @@ export default function EmailHistory() {
                   <>
                     <div className="overflow-x-auto">
                       <table className="w-full">
-                        <thead className="border-b border-zinc-800">
+                        <thead className="table-head">
                           <tr>
                             <th className={thCls}>Recipient</th>
                             <th className={thCls}>Subject</th>
@@ -452,14 +452,14 @@ export default function EmailHistory() {
                             <th className={thCls}>Sent at</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-zinc-800/60">
+                        <tbody className="divide-y divide-white/[0.08]">
                           {groupDetail.emails.length === 0 && (
                             <tr>
                               <td colSpan={4} className="px-4 py-8 text-center text-sm text-zinc-500">No emails in this group.</td>
                             </tr>
                           )}
                           {groupDetail.emails.map(email => (
-                            <tr key={email.id} className="hover:bg-zinc-800/30 transition-colors">
+                            <tr key={email.id} className="hover:bg-white/[0.035] transition-colors">
                               <td className={`${tdCls} text-zinc-300 max-w-[180px] truncate`} title={email.recipient_email}>{email.recipient_email}</td>
                               <td className={`${tdCls} text-zinc-400 max-w-[200px] truncate`} title={email.subject}>{email.subject}</td>
                               <td className={tdCls}><StatusBadge status={email.status} /></td>
@@ -470,20 +470,20 @@ export default function EmailHistory() {
                       </table>
                     </div>
                     {groupDetail.total_pages > 1 && (
-                      <div className="px-4 py-3 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
+                      <div className="px-4 py-3 border-t border-white/[0.08] flex items-center justify-between text-xs text-zinc-500">
                         <span>Page {groupDetail.page} of {groupDetail.total_pages} ({groupDetail.total} total)</span>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => handleDetailPageChange(detailPage - 1)}
                             disabled={detailPage === 1}
-                            className="p-1.5 rounded-lg hover:bg-zinc-800 disabled:opacity-30 transition-colors"
+                            className="p-1.5 rounded-lg hover:bg-white/[0.055] disabled:opacity-30 transition-colors"
                           >
                             <ChevronLeft className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleDetailPageChange(detailPage + 1)}
                             disabled={detailPage === groupDetail.total_pages}
-                            className="p-1.5 rounded-lg hover:bg-zinc-800 disabled:opacity-30 transition-colors"
+                            className="p-1.5 rounded-lg hover:bg-white/[0.055] disabled:opacity-30 transition-colors"
                           >
                             <ChevronRight className="w-4 h-4" />
                           </button>

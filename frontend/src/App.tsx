@@ -19,7 +19,7 @@ function App() {
   return (
     <AuthProvider>
       <Router>
-        <div className="min-h-screen bg-zinc-950">
+        <div className="min-h-screen bg-[#08090b]">
           <main>
             <Routes>
               {/* Public Routes */}

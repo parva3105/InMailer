@@ -52,7 +52,7 @@ const TestEmail: React.FC = () => {
 
   return (
     <AppShell>
-      <div className="px-6 py-8 max-w-2xl mx-auto w-full">
+      <div className="app-container-narrow">
         {/* Header */}
         <div className="mb-8">
           <h1 className="page-title">Test Email</h1>
@@ -64,9 +64,9 @@ const TestEmail: React.FC = () => {
         {/* Form card */}
         <div className="card p-6">
           {/* Sending as */}
-          <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-zinc-800/60 border border-zinc-700/50 mb-6">
-            <div className="w-6 h-6 rounded-full bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-bold text-indigo-400">
+          <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-white/[0.045] border border-white/10 mb-6">
+            <div className="w-6 h-6 rounded-full bg-teal-400/15 border border-teal-300/25 flex items-center justify-center flex-shrink-0">
+              <span className="text-xs font-bold text-teal-300">
                 {user?.name?.charAt(0)?.toUpperCase() ?? 'U'}
               </span>
             </div>
@@ -80,8 +80,8 @@ const TestEmail: React.FC = () => {
           {message && (
             <div className={`mb-6 p-3.5 rounded-lg flex items-start gap-3 border ${
               message.type === 'success'
-                ? 'bg-emerald-500/8 border-emerald-500/20'
-                : 'bg-red-500/8 border-red-500/20'
+                ? 'bg-emerald-500/[0.08] border-emerald-500/20'
+                : 'bg-red-500/[0.08] border-red-500/20'
             }`}>
               {message.type === 'success' ? (
                 <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
@@ -158,7 +158,7 @@ const TestEmail: React.FC = () => {
             </div>
 
             {/* Actions */}
-            <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
+            <div className="flex items-center justify-between pt-2 border-t border-white/[0.08]">
               <button
                 type="button"
                 onClick={() => navigate('/dashboard')}
@@ -174,7 +174,7 @@ const TestEmail: React.FC = () => {
                 {isLoading ? (
                   <>
                     <div className="spinner w-4 h-4" style={{ width: 16, height: 16, borderWidth: 2 }} />
-                    Sending…
+                    Sending...
                   </>
                 ) : (
                   <>

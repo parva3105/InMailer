@@ -61,12 +61,12 @@ const TemplateDetail: React.FC = () => {
 
   return (
     <AppShell>
-      <div className="px-6 py-8 max-w-3xl mx-auto w-full">
+      <div className="app-container-narrow">
         {/* Back */}
         <div className="flex items-center gap-3 mb-8">
           <button
             onClick={() => navigate('/templates')}
-            className="p-2 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-all"
+            className="p-2 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.055] transition-all"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -111,7 +111,7 @@ const TemplateDetail: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => navigate(`/templates/${template.id}/edit`)}
-                    className="btn-secondary text-xs px-3 py-2 text-indigo-400 border-indigo-500/20 bg-indigo-500/5 hover:bg-indigo-500/10"
+                    className="btn-secondary text-xs px-3 py-2 text-teal-300 border-teal-300/20 bg-teal-400/5 hover:bg-teal-400/10"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                     Edit
@@ -141,7 +141,7 @@ const TemplateDetail: React.FC = () => {
                       {template.variables.map(v => (
                         <span
                           key={v}
-                          className="px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-mono font-medium"
+                          className="px-2.5 py-1 rounded-full bg-teal-400/10 border border-teal-300/20 text-teal-300 text-xs font-mono font-medium"
                         >
                           {`\${${v}}`}
                         </span>
@@ -165,7 +165,7 @@ const TemplateDetail: React.FC = () => {
             {/* Content card */}
             <div className="card p-6">
               <p className="text-xs text-zinc-600 uppercase tracking-wide font-medium mb-4">Content</p>
-              <pre className="content-mono text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap bg-zinc-950/60 border border-zinc-800 rounded-lg p-5 overflow-x-auto">
+              <pre className="content-mono text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap bg-black/20 border border-white/[0.08] rounded-lg p-5 overflow-x-auto">
                 {template.content}
               </pre>
             </div>

@@ -121,12 +121,12 @@ const TemplateCreator: React.FC = () => {
 
   return (
     <AppShell>
-      <div className="px-6 py-8 max-w-3xl mx-auto w-full">
+      <div className="app-container-narrow">
         {/* Back + title */}
         <div className="flex items-center gap-3 mb-8">
           <button
             onClick={() => navigate('/templates')}
-            className="p-2 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-all duration-150"
+            className="p-2 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.055] transition-all duration-150"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -148,7 +148,7 @@ const TemplateCreator: React.FC = () => {
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
                   className="input"
-                  placeholder="e.g. Job Application – SWE"
+                  placeholder="e.g. Job Application - SWE"
                 />
               </div>
               <div>
@@ -172,12 +172,12 @@ const TemplateCreator: React.FC = () => {
               {variables.map((variable, index) => (
                 <div
                   key={index}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-medium"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-400/10 border border-teal-300/20 text-teal-300 text-xs font-medium"
                 >
                   <span className="font-mono">{`\${${variable}}`}</span>
                   <button
                     onClick={() => removeVariable(index)}
-                    className="text-indigo-500 hover:text-indigo-300 transition-colors ml-0.5"
+                    className="text-teal-400 hover:text-teal-200 transition-colors ml-0.5"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -190,7 +190,7 @@ const TemplateCreator: React.FC = () => {
                 value={newVariable}
                 onChange={(e) => setNewVariable(e.target.value)}
                 className="input flex-1"
-                placeholder="Add variable name…"
+                placeholder="Add variable name..."
                 onKeyPress={(e) => e.key === 'Enter' && addVariable()}
               />
               <button onClick={addVariable} className="btn-secondary">
@@ -210,8 +210,8 @@ const TemplateCreator: React.FC = () => {
                   <button
                     key={variable}
                     onClick={() => insertVariable(variable)}
-                    className="px-2.5 py-1 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-400 text-xs font-mono
-                               hover:bg-zinc-700 hover:text-zinc-200 hover:border-zinc-600 transition-all duration-150"
+                    className="px-2.5 py-1 rounded-md bg-white/[0.055] border border-white/10 text-zinc-400 text-xs font-mono
+                               hover:bg-white/[0.08] hover:text-zinc-200 hover:border-white/15 transition-all duration-150"
                   >
                     {`\${${variable}}`}
                   </button>
@@ -236,8 +236,8 @@ const TemplateCreator: React.FC = () => {
             </p>
 
             {editMode && attachmentName && !selectedAttachment && (
-              <div className="mb-4 p-3 rounded-lg bg-indigo-500/5 border border-indigo-500/20">
-                <p className="text-xs text-indigo-400">
+              <div className="mb-4 p-3 rounded-lg bg-teal-400/5 border border-teal-300/20">
+                <p className="text-xs text-teal-300">
                   Current attachment: <span className="font-medium">{attachmentName}</span>
                 </p>
                 <p className="text-xs text-zinc-600 mt-0.5">Upload a new file to replace it, or leave empty to keep.</p>
@@ -254,13 +254,13 @@ const TemplateCreator: React.FC = () => {
                   id="attachment-upload"
                 />
                 <label htmlFor="attachment-upload" className="cursor-pointer flex flex-col items-center">
-                  <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.055] border border-white/10 flex items-center justify-center mb-3">
                     <Upload className="w-5 h-5 text-zinc-500" />
                   </div>
                   <p className="text-sm text-zinc-400 mb-1">
-                    <span className="text-indigo-400 font-medium">Click to upload</span> or drag and drop
+                    <span className="text-teal-300 font-medium">Click to upload</span> or drag and drop
                   </p>
-                  <p className="text-xs text-zinc-600">PDF, DOC, DOCX, TXT, Images · Max 10 MB</p>
+                  <p className="text-xs text-zinc-600">PDF, DOC, DOCX, TXT, Images - Max 10 MB</p>
                 </label>
               </div>
             ) : (
@@ -300,7 +300,7 @@ const TemplateCreator: React.FC = () => {
               {isSaving ? (
                 <>
                   <div className="spinner w-4 h-4" style={{ width: 16, height: 16, borderWidth: 2 }} />
-                  Saving…
+                  Saving...
                 </>
               ) : (
                 <>
