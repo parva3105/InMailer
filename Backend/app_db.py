@@ -35,8 +35,8 @@ from lib.oauth import create_flow as build_oauth_flow, get_user_info as fetch_us
 
 # Import database modules
 from db.config import init_db
-from db.services import UserService, TemplateService, EmailLogService
-from db.models import User, Template, EmailLog
+from db.services import UserService, TemplateService, EmailLogService, CampaignService
+from db.models import User, Template, EmailLog, Campaign
 from db.config import get_db_session
 from sqlalchemy import and_
 
@@ -808,10 +808,10 @@ def delete_template(template_id):
         
         print(f"✅ Template deleted successfully")
         return jsonify({'message': 'Template deleted successfully'}), 200
-        
+
     except Exception as e:
         print(f"❌ Error deleting template: {e}")
-        
+
         # Provide more specific error messages
         error_message = str(e)
         if "ForeignKeyViolation" in error_message:
@@ -826,6 +826,34 @@ def delete_template(template_id):
             }), 500
         else:
             return jsonify({'error': 'Failed to delete template. Please try again.'}), 500
+
+@app.route('/api/templates/<int:template_id>', methods=['GET'])
+def get_template(template_id):
+    """Get a single template for the authenticated user"""
+    try:
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        user = UserService.get_user_by_email(user_info.get('email'))
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        template = TemplateService.get_template_by_id(template_id, user.id)
+        if not template:
+            return jsonify({'error': 'Template not found'}), 404
+        return jsonify({
+            'id': template.id,
+            'name': template.name,
+            'subject': template.subject,
+            'content': template.content,
+            'variables': safe_json(template.variables),
+            'attachment_path': template.attachment_path,
+            'attachment_name': template.attachment_name,
+            'created_at': safe_isoformat(template.created_at),
+            'updated_at': safe_isoformat(template.updated_at)
+        })
+    except Exception as e:
+        print(f"❌ Error getting template: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/user/stats', methods=['GET'])
 def get_user_stats():
@@ -1255,7 +1283,36 @@ def send_emails():
         template = TemplateService.get_template_by_id(int(template_id), user.id)
         if not template:
             return jsonify({'error': 'Template not found'}), 404
-        
+
+        # Check if this is a scheduled send
+        scheduled_at_str = data.get('scheduled_at')
+        campaign_name = data.get('campaign_name', f"Campaign {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}")
+
+        if scheduled_at_str:
+            try:
+                scheduled_at = datetime.fromisoformat(scheduled_at_str.replace('Z', '+00:00'))
+                # Strip timezone for storage (store as UTC naive)
+                if scheduled_at.tzinfo is not None:
+                    from datetime import timezone
+                    scheduled_at = scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
+            except (ValueError, AttributeError):
+                return jsonify({'error': 'Invalid scheduled_at format. Use ISO 8601 (e.g. 2026-06-20T14:00:00)'}), 400
+
+            campaign = CampaignService.create_campaign(
+                user_id=user.id,
+                template_id=template.id,
+                name=campaign_name,
+                contacts=contacts,
+                scheduled_at=scheduled_at,
+                total_count=len(contacts)
+            )
+            return jsonify({
+                'message': f'Campaign "{campaign_name}" scheduled for {scheduled_at_str}.',
+                'campaign_id': campaign.id,
+                'scheduled': True,
+                'total_contacts': len(contacts)
+            }), 202
+
         # Get user credentials from session
         credentials_data = session.get('credentials')
         if not credentials_data:
@@ -1412,6 +1469,329 @@ def send_emails():
     except Exception as e:
         print(f"❌ Error sending emails: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/campaigns', methods=['GET'])
+def get_campaigns():
+    """Get all campaigns for the authenticated user"""
+    try:
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        user = UserService.get_user_by_email(user_info.get('email'))
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        campaigns = CampaignService.get_user_campaigns(user.id)
+        return jsonify([vars(c) for c in campaigns])
+    except Exception as e:
+        print(f"❌ Error getting campaigns: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/campaigns/<int:campaign_id>', methods=['GET'])
+def get_campaign(campaign_id):
+    """Get a single campaign for the authenticated user"""
+    try:
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        user = UserService.get_user_by_email(user_info.get('email'))
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        campaign = CampaignService.get_campaign_by_id(campaign_id, user.id)
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+        return jsonify(vars(campaign))
+    except Exception as e:
+        print(f"❌ Error getting campaign: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/campaigns/<int:campaign_id>', methods=['DELETE'])
+def cancel_campaign(campaign_id):
+    """Cancel a scheduled campaign"""
+    try:
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        user = UserService.get_user_by_email(user_info.get('email'))
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        success = CampaignService.cancel_campaign(campaign_id, user.id)
+        if not success:
+            return jsonify({'error': 'Campaign not found or cannot be cancelled (only scheduled campaigns can be cancelled)'}), 404
+        return jsonify({'message': 'Campaign cancelled successfully'})
+    except Exception as e:
+        print(f"❌ Error cancelling campaign: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cron/process-scheduled', methods=['POST'])
+def process_scheduled_campaigns():
+    """
+    Process and dispatch all campaigns whose scheduled_at time has passed.
+    Idempotent: sets status='sending' before dispatching to prevent double-sends.
+    Callers must supply the CRON_SECRET env var in X-Cron-Secret header,
+    OR the request must come from an authenticated session (frontend fallback).
+    """
+    cron_secret = os.environ.get('CRON_SECRET')
+    if cron_secret:
+        provided = request.headers.get('X-Cron-Secret', '')
+        authenticated_session = bool(session.get('user_info'))
+        if provided != cron_secret and not authenticated_session:
+            return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        due_campaigns = CampaignService.get_due_campaigns()
+        if not due_campaigns:
+            return jsonify({'message': 'No campaigns due', 'processed': 0})
+
+        processed = 0
+        errors = []
+
+        for campaign in due_campaigns:
+            try:
+                CampaignService.update_campaign_status(campaign.id, 'sending')
+
+                credentials_dict = UserService.get_oauth_credentials(campaign.user_id)
+                if not credentials_dict:
+                    CampaignService.update_campaign_status(campaign.id, 'failed')
+                    errors.append(f"Campaign {campaign.id}: no stored credentials for user {campaign.user_id}")
+                    continue
+
+                from google.auth.transport.requests import Request as GoogleRequest
+                creds = Credentials(
+                    token=credentials_dict.get('token'),
+                    refresh_token=credentials_dict.get('refresh_token'),
+                    token_uri=credentials_dict.get('token_uri'),
+                    client_id=credentials_dict.get('client_id'),
+                    client_secret=credentials_dict.get('client_secret'),
+                    scopes=credentials_dict.get('scopes')
+                )
+
+                if not creds.valid or creds.expired:
+                    try:
+                        creds.refresh(GoogleRequest())
+                        refreshed_dict = {
+                            'token': creds.token,
+                            'refresh_token': creds.refresh_token,
+                            'token_uri': creds.token_uri,
+                            'client_id': creds.client_id,
+                            'client_secret': creds.client_secret,
+                            'scopes': list(creds.scopes) if creds.scopes else credentials_dict.get('scopes')
+                        }
+                        UserService.save_oauth_credentials(campaign.user_id, refreshed_dict)
+                    except Exception as refresh_err:
+                        CampaignService.update_campaign_status(campaign.id, 'failed')
+                        errors.append(f"Campaign {campaign.id}: token refresh failed: {str(refresh_err)}")
+                        continue
+
+                user = UserService.get_user_by_id(campaign.user_id)
+                if not user:
+                    CampaignService.update_campaign_status(campaign.id, 'failed')
+                    errors.append(f"Campaign {campaign.id}: user {campaign.user_id} not found")
+                    continue
+
+                template = None
+                if campaign.template_id:
+                    template = TemplateService.get_template_by_id(campaign.template_id, campaign.user_id)
+
+                contacts = campaign.contacts if isinstance(campaign.contacts, list) else []
+                success_count = 0
+                error_count = 0
+
+                for contact in contacts:
+                    try:
+                        email = contact.get('Email') or contact.get('email')
+                        if not email:
+                            error_count += 1
+                            continue
+
+                        if template:
+                            email_subject = replace_template_variables(template.subject, contact)
+                            email_body = replace_template_variables(template.content, contact)
+                            attachment_path = template.attachment_path
+                            attachment_name = template.attachment_name
+                        else:
+                            email_subject = f"Message from {user.name}"
+                            email_body = ""
+                            attachment_path = None
+                            attachment_name = None
+
+                        sent_message = send_gmail(
+                            credentials=creds,
+                            to_email=email,
+                            subject=email_subject,
+                            body=email_body,
+                            attachment_path=attachment_path,
+                            attachment_name=attachment_name,
+                            sender_name=user.name,
+                            user_email=user.email
+                        )
+
+                        if sent_message:
+                            EmailLogService.create_email_log(
+                                user_id=campaign.user_id,
+                                template_id=campaign.template_id,
+                                recipient_email=email,
+                                subject=email_subject,
+                                status='sent',
+                                gmail_message_id=sent_message.get('id'),
+                                campaign_id=campaign.id
+                            )
+                            success_count += 1
+                        else:
+                            EmailLogService.create_email_log(
+                                user_id=campaign.user_id,
+                                template_id=campaign.template_id,
+                                recipient_email=email,
+                                subject=email_subject,
+                                status='failed',
+                                error_message='send_gmail returned None',
+                                campaign_id=campaign.id
+                            )
+                            error_count += 1
+
+                    except Exception as contact_err:
+                        email_addr = contact.get('Email') or contact.get('email') or 'unknown'
+                        EmailLogService.create_email_log(
+                            user_id=campaign.user_id,
+                            template_id=campaign.template_id,
+                            recipient_email=email_addr,
+                            subject='Error',
+                            status='failed',
+                            error_message=str(contact_err),
+                            campaign_id=campaign.id
+                        )
+                        error_count += 1
+
+                CampaignService.update_campaign_status(
+                    campaign.id, 'sent',
+                    sent_at=datetime.utcnow(),
+                    success_count=success_count,
+                    error_count=error_count
+                )
+                processed += 1
+
+            except Exception as campaign_err:
+                errors.append(f"Campaign {campaign.id}: {str(campaign_err)}")
+                try:
+                    CampaignService.update_campaign_status(campaign.id, 'failed')
+                except Exception:
+                    pass
+
+        return jsonify({'message': f'Processed {processed} campaign(s)', 'processed': processed, 'errors': errors})
+
+    except Exception as e:
+        print(f"❌ Error processing scheduled campaigns: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/email-history', methods=['GET'])
+def get_email_history():
+    """Paginated email history with filters for the authenticated user"""
+    try:
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        user = UserService.get_user_by_email(user_info.get('email'))
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        page = max(1, int(request.args.get('page', 1)))
+        per_page = min(100, max(1, int(request.args.get('per_page', 20))))
+        sort_by = request.args.get('sort_by', 'sent_at')
+        sort_order = request.args.get('sort_order', 'desc')
+
+        filters = {}
+        if request.args.get('status'):
+            filters['status'] = request.args.get('status')
+        if request.args.get('date_from'):
+            filters['date_from'] = request.args.get('date_from')
+        if request.args.get('date_to'):
+            filters['date_to'] = request.args.get('date_to')
+        if request.args.get('campaign_id'):
+            filters['campaign_id'] = int(request.args.get('campaign_id'))
+        if request.args.get('template_id'):
+            filters['template_id'] = int(request.args.get('template_id'))
+        if request.args.get('search'):
+            filters['search'] = request.args.get('search')
+
+        result = EmailLogService.get_user_email_history(
+            user_id=user.id,
+            page=page,
+            per_page=per_page,
+            filters=filters,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+        return jsonify(result)
+    except Exception as e:
+        print(f"❌ Error getting email history: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/email-history/grouped', methods=['GET'])
+def get_email_history_grouped():
+    """Return aggregated group summaries for the grouped view"""
+    try:
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        user = UserService.get_user_by_email(user_info.get('email'))
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        group_by = request.args.get('group_by', 'campaign')
+        if group_by not in ('campaign', 'template', 'status'):
+            return jsonify({'error': 'group_by must be campaign, template, or status'}), 400
+
+        groups = EmailLogService.get_grouped_summary(user.id, group_by)
+        return jsonify({'group_by': group_by, 'groups': groups})
+    except Exception as e:
+        print(f"❌ Error getting grouped email history: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/email-history/grouped/<group_type>/<group_id>', methods=['GET'])
+def get_email_history_group_detail(group_type, group_id):
+    """Return paginated emails for a specific group"""
+    try:
+        user_info = session.get('user_info')
+        if not user_info:
+            return jsonify({'error': 'Not authenticated'}), 401
+        user = UserService.get_user_by_email(user_info.get('email'))
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        if group_type not in ('campaign', 'template', 'status'):
+            return jsonify({'error': 'group_type must be campaign, template, or status'}), 400
+
+        page = max(1, int(request.args.get('page', 1)))
+        per_page = min(100, max(1, int(request.args.get('per_page', 20))))
+
+        if group_id == 'null':
+            resolved_group_id = None
+        elif group_type == 'status':
+            resolved_group_id = group_id
+        else:
+            try:
+                resolved_group_id = int(group_id)
+            except ValueError:
+                return jsonify({'error': 'Invalid group_id'}), 400
+
+        result = EmailLogService.get_group_detail(
+            user_id=user.id,
+            group_type=group_type,
+            group_id=resolved_group_id,
+            page=page,
+            per_page=per_page
+        )
+        return jsonify(result)
+    except Exception as e:
+        print(f"❌ Error getting group detail: {e}")
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/send-gmail', methods=['POST'])
 def send_test_email():
@@ -1970,7 +2350,12 @@ def google_callback():
         
         print(f"✅ OAuth successful! User: {user_info.get('email')}")
         print(f"✅ Session stored: {list(session.keys())}")
-        
+
+        # Persist OAuth credentials to DB for scheduled send support
+        user_id_to_persist = user.id if hasattr(user, 'id') and user.id else (existing_user.id if existing_user else None)
+        if user_id_to_persist:
+            UserService.save_oauth_credentials(user_id_to_persist, session['credentials'])
+
         # Redirect to frontend after successful OAuth
         frontend_url = os.getenv('FRONTEND_URL', 'https://inmailer.vercel.app')
         return redirect(f"{frontend_url}/auth/success?email={user_info.get('email')}&name={user_info.get('name')}")

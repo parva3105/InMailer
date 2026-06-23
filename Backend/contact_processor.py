@@ -30,7 +30,7 @@ class ContactProcessor:
             raise FileNotFoundError(f"CSV file not found: {csv_path}")
         
         with open(csv_path, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
+            reader = csv.DictReader(f)  # Reads CSV with headers as keys
             
             # Validate required columns
             required_columns = ["Email"]

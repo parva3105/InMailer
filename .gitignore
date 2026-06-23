@@ -109,3 +109,12 @@ Executive.md
 script.md
 Interview.md
 .attic/*
+Presentation.md
+
+# Agent memory files (local planning context, not for repo)
+AGENT_MEMORY.md
+.agent-memory.md
+
+
+.claude/
+.cursor/

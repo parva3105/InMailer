@@ -1,216 +1,193 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Mail, Upload, FileText, LogIn, UserPlus, Send, Users, Zap } from 'lucide-react';
+import { Mail, Upload, FileText, Send, Users, Zap, ArrowRight } from 'lucide-react';
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // If user is already authenticated, redirect to dashboard
   React.useEffect(() => {
-    if (user) {
-      navigate('/dashboard');
-    }
+    if (user) navigate('/dashboard');
   }, [user, navigate]);
 
+  const steps = [
+    {
+      number: '01',
+      icon: FileText,
+      title: 'Create Templates',
+      description: 'Design personalized email templates with dynamic variables like {name} and {company}.',
+      color: 'text-indigo-400',
+      bg: 'bg-indigo-500/10',
+      border: 'border-indigo-500/20',
+    },
+    {
+      number: '02',
+      icon: Upload,
+      title: 'Upload Contacts',
+      description: 'Import your contact list via CSV. Include names, emails, and any custom fields you need.',
+      color: 'text-violet-400',
+      bg: 'bg-violet-500/10',
+      border: 'border-violet-500/20',
+    },
+    {
+      number: '03',
+      icon: Send,
+      title: 'Send Campaigns',
+      description: 'Launch your personalized outreach. Each recipient gets a uniquely tailored message via Gmail.',
+      color: 'text-purple-400',
+      bg: 'bg-purple-500/10',
+      border: 'border-purple-500/20',
+    },
+  ];
+
+  const features = [
+    { icon: Zap, label: 'Lightning Fast', desc: 'Send hundreds of personalized emails in seconds', color: 'text-yellow-400' },
+    { icon: Users, label: 'Personal Touch', desc: 'Every email is uniquely personalized with recipient data', color: 'text-indigo-400' },
+    { icon: Mail, label: 'Gmail Integration', desc: 'Sends securely through your own Gmail account', color: 'text-violet-400' },
+  ];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center">
-              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
-                <Mail className="w-5 h-5 text-blue-600" />
-              </div>
-              <h1 className="text-xl font-semibold text-gray-900">InMailer</h1>
+    <div className="min-h-screen bg-zinc-950 grid-overlay flex flex-col relative overflow-hidden">
+      {/* Ambient orb */}
+      <div className="hero-orb" aria-hidden="true" />
+
+      {/* Nav */}
+      <header className="relative z-10 border-b border-zinc-800/60 bg-zinc-950/80 backdrop-blur-md sticky top-0">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
+              <Mail className="w-4.5 h-4.5 text-white" style={{ width: 18, height: 18 }} />
             </div>
-            
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={() => navigate('/signin')}
-                className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <LogIn className="w-4 h-4" />
-                <span>Sign In</span>
-              </button>
-              
-              <button
-                onClick={() => navigate('/signup')}
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <UserPlus className="w-4 h-4" />
-                <span>Sign Up</span>
-              </button>
-            </div>
+            <span className="text-base font-semibold text-zinc-100 tracking-tight">InMailer</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/signin')}
+              className="btn-ghost text-zinc-400 px-3 py-2"
+            >
+              Sign in
+            </button>
+            <button
+              onClick={() => navigate('/signup')}
+              className="btn-primary px-4 py-2"
+            >
+              Get started
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <div className="flex-1 flex items-center justify-center py-12">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="text-center mb-16">
-            <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Mail className="w-10 h-10 text-blue-600" />
-            </div>
-            
-            <h1 className="text-5xl font-bold text-gray-900 mb-4">InMailer</h1>
-            <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-              The simplest way to send personalized email outreach campaigns. Create templates, upload contacts, and track results - all in one place.
-            </p>
-            
-            <div className="flex flex-col sm:flex-row gap-4 justify-center max-w-md mx-auto">
-              <button
-                onClick={() => navigate('/signup')}
-                className="bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium"
-              >
-                <UserPlus className="w-5 h-5" />
-                Get Started Free
-              </button>
-              
-              <button
-                onClick={() => navigate('/signin')}
-                className="bg-gray-100 text-gray-700 py-3 px-6 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 font-medium"
-              >
-                <LogIn className="w-5 h-5" />
-                Sign In
-              </button>
-            </div>
+      {/* Hero */}
+      <section className="relative z-10 flex-1 flex items-start justify-center pt-24 pb-16 px-4 sm:px-6">
+        <div className="max-w-3xl mx-auto text-center">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-medium mb-8 animate-fade-in">
+            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+            Gmail-powered email outreach
           </div>
 
-          {/* How It Works Section */}
-          <div className="bg-white rounded-3xl shadow-2xl p-8 md:p-12">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">How InMailer Works</h2>
-              <p className="text-gray-600 text-lg max-w-2xl mx-auto">
-                Send professional email campaigns in just 3 simple steps. No technical expertise required.
-              </p>
-            </div>
+          <h1 className="text-5xl sm:text-6xl font-bold text-zinc-100 tracking-tight leading-[1.08] mb-6 animate-fade-up">
+            Email outreach,
+            <span className="block text-gradient-indigo">done right.</span>
+          </h1>
 
-            <div className="grid md:grid-cols-3 gap-8">
-              {/* Step 1 */}
-              <div className="text-center group">
-                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300 shadow-lg">
-                  <FileText className="w-8 h-8 text-white" />
-                </div>
-                <div className="bg-blue-50 rounded-xl p-6 h-full">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">1. Create Templates</h3>
-                  <p className="text-gray-600 text-sm">
-                    Design beautiful email templates with personalization variables like {'{name}'} and {'{company}'}.
-                  </p>
-                </div>
-              </div>
+          <p className="text-lg text-zinc-400 max-w-xl mx-auto mb-10 leading-relaxed animate-fade-up animate-delay-100">
+            Create personalized email templates, upload your contact list, and send at scale — all through your own Gmail account.
+          </p>
 
-              {/* Step 2 */}
-              <div className="text-center group">
-                <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300 shadow-lg">
-                  <Upload className="w-8 h-8 text-white" />
-                </div>
-                <div className="bg-green-50 rounded-xl p-6 h-full">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">2. Upload Contacts</h3>
-                  <p className="text-gray-600 text-sm">
-                    Import your contact list via CSV file. Include names, emails, and any custom fields[UpComing] you want to use.
-                  </p>
-                </div>
-              </div>
-
-              {/* Step 3 */}
-              <div className="text-center group">
-                <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300 shadow-lg">
-                  <Send className="w-8 h-8 text-white" />
-                </div>
-                <div className="bg-purple-50 rounded-xl p-6 h-full">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">3. Send Mail</h3>
-                  <p className="text-gray-600 text-sm">
-                    Send your personalized email to your recruiter. Each recipient gets a customized message through Gmail.
-                  </p>
-                </div>
-              </div>
-
-
-            </div>
-
-            {/* Features Highlight */}
-            <div className="mt-12 pt-8 border-t border-gray-200">
-              <div className="grid md:grid-cols-3 gap-6 text-center">
-                <div className="flex flex-col items-center">
-                  <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-3">
-                    <Zap className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <h4 className="font-semibold text-gray-900 mb-1">Lightning Fast</h4>
-                  <p className="text-gray-600 text-sm">Send hundreds of personalized emails in seconds</p>
-                </div>
-                
-                <div className="flex flex-col items-center">
-                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-3">
-                    <Users className="w-6 h-6 text-green-600" />
-                  </div>
-                  <h4 className="font-semibold text-gray-900 mb-1">Personal Touch</h4>
-                  <p className="text-gray-600 text-sm">Every email is personalized with recipient data</p>
-                </div>
-                
-                <div className="flex flex-col items-center">
-                  <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mb-3">
-                    <Mail className="w-6 h-6 text-purple-600" />
-                  </div>
-                  <h4 className="font-semibold text-gray-900 mb-1">Gmail Integration</h4>
-                  <p className="text-gray-600 text-sm">Sends through your Gmail account securely</p>
-                </div>
-              </div>
-            </div>
-
-            {/* CTA Section */}
-            <div className="mt-12 text-center">
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-8">
-                <h3 className="text-2xl font-bold text-gray-900 mb-4">Ready to get started?</h3>
-                <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                  Join thousands of professionals who trust InMailer for their email outreach campaigns.
-                </p>
-                <button
-                  onClick={() => navigate('/signup')}
-                  className="bg-blue-600 text-white py-3 px-8 rounded-lg hover:bg-blue-700 transition-colors font-medium inline-flex items-center gap-2"
-                >
-                  <UserPlus className="w-5 h-5" />
-                  Start Free Today
-                </button>
-              </div>
-            </div>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 animate-fade-up animate-delay-200">
+            <button
+              onClick={() => navigate('/signup')}
+              className="btn-primary px-6 py-3 text-base gap-2.5"
+            >
+              Start for free
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => navigate('/signin')}
+              className="btn-secondary px-6 py-3 text-base"
+            >
+              Sign in
+            </button>
           </div>
         </div>
-      </div>
-      
-      {/* Footer - At Bottom */}
-      <footer className="border-t border-gray-200 bg-white">
-        <div className="max-w-6xl mx-auto px-4 py-6">
-          <div className="text-center text-gray-600">
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
-              <a 
-                href="/terms-of-service" 
-                className="text-sm text-gray-600 hover:text-blue-600 transition-colors underline decoration-gray-300 hover:decoration-blue-600"
-              >
-                Terms of Service
-              </a>
-              <span className="hidden sm:block text-gray-400">•</span>
-              <a 
-                href="/privacy-policy" 
-                className="text-sm text-gray-600 hover:text-blue-600 transition-colors underline decoration-gray-300 hover:decoration-blue-600"
-              >
-                Privacy Policy
-              </a>
-            </div>
-            <p className="text-sm">
-              © 2025 Made by{' '}
-              <a 
-                href="https://www.linkedin.com/in/parva3105" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-800 font-medium transition-colors underline decoration-blue-300 hover:decoration-blue-600"
-              >
-                Parva Shah
-              </a>
+      </section>
+
+      {/* How it works */}
+      <section className="relative z-10 px-4 sm:px-6 pb-20">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-12">
+            <p className="text-xs text-zinc-600 font-medium uppercase tracking-widest mb-3">How it works</p>
+            <h2 className="text-3xl font-bold text-zinc-100 tracking-tight">
+              Three steps to your inbox
+            </h2>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-4">
+            {steps.map((step) => (
+              <div key={step.number} className={`card p-6 border ${step.border} relative overflow-hidden`}>
+                <div className={`absolute top-4 right-4 text-4xl font-bold opacity-[0.06] text-zinc-100`}>
+                  {step.number}
+                </div>
+                <div className={`w-10 h-10 rounded-lg ${step.bg} border ${step.border} flex items-center justify-center mb-5`}>
+                  <step.icon className={`w-5 h-5 ${step.color}`} />
+                </div>
+                <h3 className="text-base font-semibold text-zinc-100 mb-2">{step.title}</h3>
+                <p className="text-sm text-zinc-500 leading-relaxed">{step.description}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Features */}
+          <div className="mt-12 grid md:grid-cols-3 gap-6">
+            {features.map((f) => (
+              <div key={f.label} className="flex items-start gap-4 px-4 py-5 rounded-xl bg-zinc-900/40 border border-zinc-800/50">
+                <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0">
+                  <f.icon className={`w-4 h-4 ${f.color}`} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-zinc-200 mb-0.5">{f.label}</p>
+                  <p className="text-xs text-zinc-500 leading-relaxed">{f.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* CTA */}
+          <div className="mt-12 rounded-2xl border border-indigo-500/20 bg-indigo-500/5 p-10 text-center">
+            <h3 className="text-2xl font-bold text-zinc-100 mb-3">Ready to start sending?</h3>
+            <p className="text-zinc-500 mb-6 max-w-sm mx-auto text-sm">
+              Join professionals who trust InMailer for their email outreach campaigns.
             </p>
+            <button
+              onClick={() => navigate('/signup')}
+              className="btn-primary px-6 py-3 text-base"
+            >
+              Get started free
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="relative z-10 border-t border-zinc-800/60 py-6 px-4">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-zinc-600">
+          <p>
+            © 2025 Made by{' '}
+            <a
+              href="https://www.linkedin.com/in/parva3105"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-zinc-400 hover:text-indigo-400 transition-colors"
+            >
+              Parva Shah
+            </a>
+          </p>
+          <div className="flex items-center gap-4">
+            <a href="/terms-of-service" className="hover:text-zinc-400 transition-colors">Terms</a>
+            <a href="/privacy-policy" className="hover:text-zinc-400 transition-colors">Privacy</a>
           </div>
         </div>
       </footer>
