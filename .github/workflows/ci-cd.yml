@@ -117,7 +117,7 @@ jobs:
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
       - name: Build Vercel production artifact
-        run: vercel build --prod --token="$VERCEL_TOKEN"
+        run: PATH="$PWD/node_modules/.bin:$PATH" vercel build --prod --token="$VERCEL_TOKEN"
 
       - name: Deploy Vercel production artifact
         run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
