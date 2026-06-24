@@ -1,4 +1,5 @@
 from flask import request, jsonify, session, redirect
+import hmac
 import logging
 import os
 import json
@@ -476,7 +477,18 @@ def create_email_message(to_email, subject, body, attachment_path=None, attachme
     from email.mime.multipart import MIMEMultipart
     from email.mime.base import MIMEBase
     from email.encoders import encode_base64
-    
+
+    def _sanitize_header(value: str) -> str:
+        return value.replace('\r', '').replace('\n', '')
+
+    # Validate recipient address shape to block header injection
+    if not to_email or '@' not in to_email or ' ' in to_email.strip():
+        raise ValueError(f"Invalid recipient email: {to_email!r}")
+
+    subject = _sanitize_header(subject)
+    to_email = _sanitize_header(to_email)
+    sender_name = _sanitize_header(sender_name) if sender_name else sender_name
+
     message = MIMEMultipart()
     message['to'] = to_email
     message['subject'] = subject
@@ -603,8 +615,8 @@ def get_templates():
         return jsonify(templates_data)
         
     except Exception as e:
-        logging.error(f"❌ Error getting templates: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error getting templates: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 @app.route('/api/templates', methods=['POST'])
 def create_template():
@@ -710,8 +722,8 @@ def create_template():
         return jsonify({'message': 'Template created successfully', 'template': template_data}), 201
         
     except Exception as e:
-        logging.error(f"❌ Error creating template: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error creating template: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 @app.route('/api/templates/<int:template_id>', methods=['PUT'])
 def update_template(template_id):
@@ -819,8 +831,8 @@ def update_template(template_id):
         return jsonify({'message': 'Template updated successfully', 'template': template_data}), 200
         
     except Exception as e:
-        logging.error(f"❌ Error updating template: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error updating template: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 @app.route('/api/templates/<int:template_id>', methods=['DELETE'])
 def delete_template(template_id):
@@ -889,8 +901,8 @@ def get_template(template_id):
             'updated_at': safe_isoformat(template.updated_at)
         })
     except Exception as e:
-        logging.error(f"❌ Error getting template: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error getting template: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 @app.route('/api/user/stats', methods=['GET'])
 def get_user_stats():
@@ -913,8 +925,8 @@ def get_user_stats():
         return jsonify(stats)
         
     except Exception as e:
-        logging.error(f"❌ Error getting user stats: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error getting user stats: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 @app.route('/api/dashboard/stats', methods=['GET'])
 def get_dashboard_stats():
@@ -980,8 +992,8 @@ def get_dashboard_stats():
         })
         
     except Exception as e:
-        logging.error(f"❌ Error getting dashboard stats: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error getting dashboard stats: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 @app.route('/api/template-attachment', methods=['POST'])
 def upload_template_attachment():
@@ -1029,8 +1041,8 @@ def upload_template_attachment():
         })
         
     except Exception as e:
-        logging.error(f"❌ Error uploading attachment: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error uploading attachment: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 @app.route('/api/debug/database', methods=['GET'])
 def debug_database():
@@ -1074,8 +1086,8 @@ def debug_database():
             db.close()
 
     except Exception as e:
-        logging.error(f"Error debugging database: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"Error debugging database: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 @app.route('/api/debug-csv', methods=['POST'])
 def debug_csv():
@@ -1142,8 +1154,8 @@ def debug_csv():
         })
         
     except Exception as e:
-        logging.error(f"❌ Error analyzing CSV: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error analyzing CSV: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 @app.route('/api/mail-merge', methods=['POST'])
 def mail_merge_preview():
@@ -1234,10 +1246,11 @@ def mail_merge_preview():
                 results.append(preview_data)
                 
             except Exception as e:
+                logging.error("Error processing contact in preview: %s", e, exc_info=True)
                 results.append({
                     'contact': contact,
                     'subject': 'Error',
-                    'content': f'Error processing contact: {str(e)}',
+                    'content': 'Error processing contact',
                     'status': 'error'
                 })
         
@@ -1256,8 +1269,8 @@ def mail_merge_preview():
         })
         
     except Exception as e:
-        logging.error(f"❌ Error generating mail merge preview: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error generating mail merge preview: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 @app.route('/api/send-emails', methods=['POST'])
 def send_emails():
@@ -1455,6 +1468,7 @@ def send_emails():
                     
             except Exception as e:
                 # Log error
+                logging.error("Error sending email to contact: %s", e, exc_info=True)
                 email = contact.get('Email') or contact.get('email') or 'Unknown'
                 EmailLogService.create_email_log(
                     user_id=user.id,
@@ -1464,11 +1478,11 @@ def send_emails():
                     status='failed',
                     error_message=str(e)
                 )
-                
+
                 results.append({
                     'contact': contact,
                     'status': 'error',
-                    'error': str(e)
+                    'error': 'Failed to send email'
                 })
                 error_count += 1
         
@@ -1480,8 +1494,8 @@ def send_emails():
         })
         
     except Exception as e:
-        logging.error(f"❌ Error sending emails: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error sending emails: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 
 @app.route('/api/campaigns', methods=['GET'])
@@ -1497,8 +1511,8 @@ def get_campaigns():
         campaigns = CampaignService.get_user_campaigns(user.id)
         return jsonify([vars(c) for c in campaigns])
     except Exception as e:
-        logging.error(f"❌ Error getting campaigns: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error getting campaigns: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 
 @app.route('/api/campaigns/<int:campaign_id>', methods=['GET'])
@@ -1516,8 +1530,8 @@ def get_campaign(campaign_id):
             return jsonify({'error': 'Campaign not found'}), 404
         return jsonify(vars(campaign))
     except Exception as e:
-        logging.error(f"❌ Error getting campaign: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error getting campaign: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 
 @app.route('/api/campaigns/<int:campaign_id>', methods=['DELETE'])
@@ -1535,8 +1549,8 @@ def cancel_campaign(campaign_id):
             return jsonify({'error': 'Campaign not found or cannot be cancelled (only scheduled campaigns can be cancelled)'}), 404
         return jsonify({'message': 'Campaign cancelled successfully'})
     except Exception as e:
-        logging.error(f"❌ Error cancelling campaign: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error cancelling campaign: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 
 @app.route('/api/cron/process-scheduled', methods=['POST'])
@@ -1544,8 +1558,7 @@ def process_scheduled_campaigns():
     """
     Process and dispatch all campaigns whose scheduled_at time has passed.
     Idempotent: sets status='sending' before dispatching to prevent double-sends.
-    Callers must supply the CRON_SECRET env var in X-Cron-Secret header,
-    OR the request must come from an authenticated session (frontend fallback).
+    Callers must supply the CRON_SECRET env var in the X-Cron-Secret header.
     """
     cron_secret = os.environ.get('CRON_SECRET')
     if not cron_secret:
@@ -1553,8 +1566,7 @@ def process_scheduled_campaigns():
         return jsonify({'error': 'Cron processing is not configured'}), 503
 
     provided = request.headers.get('X-Cron-Secret', '')
-    authenticated_session = bool(session.get('user_info'))
-    if provided != cron_secret and not authenticated_session:
+    if not hmac.compare_digest(provided, cron_secret):
         return jsonify({'error': 'Unauthorized'}), 401
 
     try:
@@ -1699,8 +1711,8 @@ def process_scheduled_campaigns():
         return jsonify({'message': f'Processed {processed} campaign(s)', 'processed': processed, 'errors': errors})
 
     except Exception as e:
-        logging.error(f"❌ Error processing scheduled campaigns: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error processing scheduled campaigns: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 
 @app.route('/api/email-history', methods=['GET'])
@@ -1743,8 +1755,8 @@ def get_email_history():
         )
         return jsonify(result)
     except Exception as e:
-        logging.error(f"❌ Error getting email history: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error getting email history: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 
 @app.route('/api/email-history/grouped', methods=['GET'])
@@ -1765,8 +1777,8 @@ def get_email_history_grouped():
         groups = EmailLogService.get_grouped_summary(user.id, group_by)
         return jsonify({'group_by': group_by, 'groups': groups})
     except Exception as e:
-        logging.error(f"❌ Error getting grouped email history: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error getting grouped email history: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 
 @app.route('/api/email-history/grouped/<group_type>/<group_id>', methods=['GET'])
@@ -1805,8 +1817,8 @@ def get_email_history_group_detail(group_type, group_id):
         )
         return jsonify(result)
     except Exception as e:
-        logging.error(f"❌ Error getting group detail: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error getting group detail: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 
 @app.route('/api/send-gmail', methods=['POST'])
@@ -1884,8 +1896,8 @@ def send_test_email():
             'message_id': sent_message.get('id')
         })
     except Exception as e:
-        logging.error(f"❌ Error sending test email: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error sending test email: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 @app.route('/api/debug/credentials', methods=['GET'])
 def debug_credentials():
@@ -1920,8 +1932,8 @@ def debug_credentials():
         })
         
     except Exception as e:
-        logging.error(f"❌ Error debugging credentials: {e}")
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"❌ Error debugging credentials: {e}", exc_info=True)
+        return jsonify({'error': 'An internal error occurred'}), 500
 
 @app.route('/auth/user')
 def get_user():
@@ -1964,10 +1976,10 @@ def logout():
             'note': 'All session data and OAuth tokens have been cleared. You will need to sign in again to use Gmail features.'
         })
     except Exception as e:
-        logging.error(f"❌ Error during logout: {e}")
+        logging.error("Error during logout: %s", e, exc_info=True)
         # Still try to clear session even if there's an error
         session.clear()
-        return jsonify({'message': 'Logged out (with errors)', 'error': str(e)}), 500
+        return jsonify({'message': 'Logged out (with errors)', 'error': 'An internal error occurred'}), 500
 
 @app.route('/auth/force-reauth')
 def force_reauth():
@@ -2042,16 +2054,18 @@ def validate_credentials():
             })
             
         except Exception as e:
+            logging.error("Credentials validation failed: %s", e, exc_info=True)
             return jsonify({
                 'valid': False,
-                'error': f'Credentials validation failed: {str(e)}',
+                'error': 'Credentials validation failed',
                 'action': 'reauth_required'
             }), 200
-            
+
     except Exception as e:
+        logging.error("Credentials validation error: %s", e, exc_info=True)
         return jsonify({
             'valid': False,
-            'error': f'Validation error: {str(e)}',
+            'error': 'An internal error occurred',
             'action': 'unknown_error'
         }), 500
 
@@ -2089,6 +2103,15 @@ def debug_session():
 def health_check():
     """Health check endpoint to verify backend and database status"""
     try:
+        # Only admins receive the verbose diagnostic payload. Determine admin
+        # status inline without aborting so the health check never returns 401.
+        user_info = session.get('user_info')
+        admin_emails = [e.strip().lower() for e in os.getenv('ADMIN_EMAILS', '').split(',') if e.strip()]
+        is_admin = bool(user_info and user_info.get('email', '').lower() in admin_emails)
+
+        if not is_admin:
+            return jsonify({'status': 'ok', 'timestamp': datetime.now().isoformat()}), 200
+
         health_status = {
             'status': 'healthy',
             'timestamp': datetime.now().isoformat(),
@@ -2129,9 +2152,10 @@ def health_check():
         return jsonify(health_status), status_code
         
     except Exception as e:
+        logging.error("Health check failed: %s", e, exc_info=True)
         return jsonify({
             'status': 'error',
-            'error': str(e),
+            'error': 'An internal error occurred',
             'timestamp': datetime.now().isoformat()
         }), 500
 
@@ -2367,10 +2391,10 @@ def google_callback():
         
     except Exception as e:
         import sys, traceback
-        logging.error(f"Error in OAuth callback: {e}")
+        logging.error("Error in OAuth callback: %s", e, exc_info=True)
         traceback.print_exc()
         sys.stderr.flush()
-        return jsonify({'error': 'OAuth callback failed', 'details': str(e)}), 500
+        return jsonify({'error': 'OAuth callback failed'}), 500
 
 @app.route('/api/user-limit-status', methods=['GET'])
 def get_user_limit_status():
