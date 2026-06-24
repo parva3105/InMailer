@@ -85,9 +85,6 @@ jobs:
       - frontend-check
       - backend-check
     environment: production
-    defaults:
-      run:
-        working-directory: frontend
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -111,13 +108,13 @@ jobs:
         run: npm install --global vercel@latest
 
       - name: Install frontend dependencies
-        run: npm ci
+        run: npm --prefix frontend ci
 
       - name: Pull Vercel production environment
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
       - name: Build Vercel production artifact
-        run: PATH="$PWD/node_modules/.bin:$PATH" vercel build --prod --token="$VERCEL_TOKEN"
+        run: PATH="$PWD/frontend/node_modules/.bin:$PATH" vercel build --prod --token="$VERCEL_TOKEN"
 
       - name: Deploy Vercel production artifact
         run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
