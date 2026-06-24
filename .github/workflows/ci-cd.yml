@@ -110,6 +110,9 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
+      - name: Install frontend dependencies
+        run: npm ci
+
       - name: Pull Vercel production environment
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
