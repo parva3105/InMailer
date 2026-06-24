@@ -38,5 +38,9 @@ services:
         value: production
       - key: SECRET_KEY
         sync: false
-
-
+      - key: CRON_SECRET
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: LOG_LEVEL
+        value: WARNING
