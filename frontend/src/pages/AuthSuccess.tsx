@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { CheckCircle, Loader } from 'lucide-react';
+import { AlertCircle, CheckCircle, Mail } from 'lucide-react';
 
 const AuthSuccess: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -14,38 +14,19 @@ const AuthSuccess: React.FC = () => {
     const processOAuthSuccess = async () => {
       try {
         setIsProcessing(true);
-        console.log('🔄 Starting OAuth success processing...');
-        
-        // Get email and name from URL params
         const email = searchParams.get('email');
         const name = searchParams.get('name');
-        
-        console.log('📧 Email from URL:', email);
-        console.log('👤 Name from URL:', name);
-        
+
         if (!email || !name) {
           setError('Missing authentication information');
           return;
         }
 
-        // Wait a moment for the backend session to be established
-        console.log('⏳ Waiting for backend session to be established...');
         await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Check if we have a valid session
-        console.log('🔍 Checking session...');
         await checkSession();
-        
-        // Wait a bit more for the session to be fully established
-        console.log('⏳ Final wait for session...');
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Redirect to dashboard
-        console.log('🚀 Redirecting to dashboard...');
         navigate('/dashboard', { replace: true });
-        
-      } catch (err: any) {
-        console.error('❌ OAuth processing error:', err);
+      } catch {
         setError('Failed to complete authentication. Please try again.');
       } finally {
         setIsProcessing(false);
@@ -57,18 +38,15 @@ const AuthSuccess: React.FC = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 to-pink-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="w-8 h-8 text-red-600" />
+      <div className="auth-bg grid min-h-screen place-items-center p-4">
+        <div className="card w-full max-w-sm p-8 text-center">
+          <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-red-500/20 bg-red-500/10">
+            <AlertCircle className="h-6 w-6 text-red-400" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Authentication Error</h1>
-          <p className="text-gray-600 mb-6">{error}</p>
-          <button
-            onClick={() => navigate('/signin')}
-            className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Try Again
+          <h1 className="mb-2 text-lg font-semibold text-zinc-100">Authentication failed</h1>
+          <p className="mb-6 text-sm text-zinc-500">{error}</p>
+          <button onClick={() => navigate('/signin')} className="btn-primary w-full">
+            Try again
           </button>
         </div>
       </div>
@@ -76,33 +54,19 @@ const AuthSuccess: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          {isProcessing ? (
-            <Loader className="w-8 h-8 text-green-600 animate-spin" />
-          ) : (
-            <CheckCircle className="w-8 h-8 text-green-600" />
-          )}
+    <div className="auth-bg grid-overlay grid min-h-screen place-items-center p-4">
+      <div className="hero-orb" aria-hidden="true" />
+      <div className="card relative z-10 w-full max-w-sm p-8 text-center glow-indigo-sm">
+        <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-teal-300/20 bg-teal-400/15 text-teal-200">
+          {isProcessing ? <Mail className="h-6 w-6 animate-pulse" /> : <CheckCircle className="h-6 w-6 text-emerald-400" />}
         </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          {isProcessing ? 'Completing Authentication...' : 'Authentication Successful!'}
+        <h1 className="mb-2 text-lg font-semibold text-zinc-100">
+          {isProcessing ? 'Completing sign in...' : "You're in"}
         </h1>
-        <p className="text-gray-600">
-          {isProcessing 
-            ? 'Please wait while we complete your sign-in process.'
-            : 'Redirecting you to your dashboard...'
-          }
+        <p className="text-sm text-zinc-500">
+          {isProcessing ? 'Setting up your session, just a moment.' : 'Redirecting to your dashboard...'}
         </p>
-        
-        {isProcessing && (
-          <div className="mt-6">
-            <div className="animate-pulse space-y-3">
-              <div className="h-2 bg-gray-200 rounded w-3/4 mx-auto"></div>
-              <div className="h-2 bg-gray-200 rounded w-1/2 mx-auto"></div>
-            </div>
-          </div>
-        )}
+        {isProcessing && <div className="mt-6 flex justify-center"><div className="spinner" /></div>}
       </div>
     </div>
   );

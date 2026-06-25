@@ -1,10 +1,18 @@
 // Frontend configuration
+
+// Google OAuth Client ID must be provided at build time. No fallback is used
+// so a misconfigured build fails loudly instead of shipping a hardcoded ID.
+const googleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+if (!googleClientId) {
+  throw new Error('REACT_APP_GOOGLE_CLIENT_ID environment variable is required');
+}
+
 export const config = {
   // API Configuration
   apiUrl: process.env.REACT_APP_API_URL || 'https://inmailer.onrender.com',
-  
+
   // Google OAuth Configuration
-  googleClientId: process.env.REACT_APP_GOOGLE_CLIENT_ID || '502741004777-i80atbmb80r61sssl9u4li6u7ml6cqhf.apps.googleusercontent.com',
+  googleClientId,
   
   // App Configuration
   appName: 'InMailer',

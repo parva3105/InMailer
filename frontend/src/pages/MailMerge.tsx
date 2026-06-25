@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Upload, FileText, Send, Eye, Download, Trash2, Edit3 } from 'lucide-react';
+import { Upload, FileText, Send, Eye, Download, Trash2, Edit3, Calendar, CheckCircle, ChevronRight } from 'lucide-react';
+import AppShell from '../components/AppShell';
 
 const API_BASE_URL = (process.env.REACT_APP_API_URL || 'https://inmailer.onrender.com') + '/api';
 
@@ -25,11 +26,7 @@ interface PreviewResult {
   content_preview: string;
   status: string;
   error?: string;
-  contact_summary: {
-    name: string;
-    email: string;
-    company: string;
-  };
+  contact_summary: { name: string; email: string; company: string; };
 }
 
 const MailMerge: React.FC = () => {
@@ -40,24 +37,17 @@ const MailMerge: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [campaignName, setCampaignName] = useState('');
   const navigate = useNavigate();
 
-  // Load templates from backend
-  useEffect(() => {
-    fetchTemplates();
-  }, []);
+  useEffect(() => { fetchTemplates(); }, []);
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/templates`, {
-        credentials: 'include' // Include session cookies
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setTemplates(data);
-      } else {
-        console.error('Failed to fetch templates');
-      }
+      const response = await fetch(`${API_BASE_URL}/templates`, { credentials: 'include' });
+      if (response.ok) setTemplates(await response.json());
     } catch (error) {
       console.error('Error fetching templates:', error);
     } finally {
@@ -66,57 +56,25 @@ const MailMerge: React.FC = () => {
   };
 
   const deleteTemplate = async (templateId: string, templateName: string) => {
-    if (window.confirm(`Are you sure you want to delete the template "${templateName}"?`)) {
-      try {
-        const response = await fetch(`${API_BASE_URL}/templates/${templateId}`, {
-          method: 'DELETE',
-          credentials: 'include', // Include session cookies
-        });
-        
-        if (response.ok) {
-          // Remove template from local state
-          setTemplates(prev => prev.filter(t => t.id !== templateId));
-          
-          // If the deleted template was selected, clear selection
-          if (selectedTemplate?.id === templateId) {
-            setSelectedTemplate(null);
-          }
-          
-          // Clear preview data if it was for the deleted template
-          if (selectedTemplate?.id === templateId) {
-            setPreviewData([]);
-          }
-          
-          console.log('Template deleted successfully');
-        } else {
-          // Get detailed error message from backend
-          const errorData = await response.json();
-          console.error('Failed to delete template:', errorData);
-          
-          if (errorData.details) {
-            alert(`Failed to delete template: ${errorData.error}\n\n${errorData.details}`);
-          } else {
-            alert(`Failed to delete template: ${errorData.error || 'Please try again.'}`);
-          }
+    if (!window.confirm(`Delete template "${templateName}"?`)) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/templates/${templateId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (response.ok) {
+        setTemplates(prev => prev.filter(t => t.id !== templateId));
+        if (selectedTemplate?.id === templateId) {
+          setSelectedTemplate(null);
+          setPreviewData([]);
         }
-      } catch (error) {
-        console.error('Error deleting template:', error);
-        alert('Error deleting template. Please try again.');
+      } else {
+        const errorData = await response.json();
+        alert(`Failed to delete: ${errorData.error || 'Please try again.'}`);
       }
+    } catch {
+      alert('Error deleting template. Please try again.');
     }
-  };
-
-  const editTemplate = (template: Template) => {
-    console.log('🔍 Edit template called with:', template);
-    console.log('🔍 Template ID in editTemplate:', template.id, 'Type:', typeof template.id);
-    
-    // Navigate to template creator with template data
-    navigate('/templates', { 
-      state: { 
-        editMode: true, 
-        template: template 
-      } 
-    });
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,39 +96,27 @@ const MailMerge: React.FC = () => {
       const data = lines.slice(1).filter(line => line.trim()).map(line => {
         const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
         const contact: Contact = {};
-        headers.forEach((header, index) => {
-          contact[header] = values[index] || '';
-        });
+        headers.forEach((header, index) => { contact[header] = values[index] || ''; });
         return contact;
       });
       setContacts(data);
-      // Clear preview data when new CSV is uploaded
       setPreviewData([]);
     };
     reader.readAsText(file);
   };
 
-  const handleTemplateSelect = (template: Template) => {
-    setSelectedTemplate(template);
-  };
-
   const generatePreview = async () => {
     if (!selectedTemplate || contacts.length === 0) return;
-
     setIsProcessing(true);
-    
     try {
-      // Create FormData for file upload
       const formData = new FormData();
       formData.append('template_id', selectedTemplate.id);
       formData.append('csv_file', selectedFile!);
-
       const response = await fetch(`${API_BASE_URL}/mail-merge`, {
         method: 'POST',
-        credentials: 'include', // Include session cookies
+        credentials: 'include',
         body: formData,
       });
-
       if (response.ok) {
         const result = await response.json();
         setPreviewData(result.results);
@@ -178,8 +124,7 @@ const MailMerge: React.FC = () => {
         const error = await response.json();
         alert(`Error generating preview: ${error.error}`);
       }
-    } catch (error) {
-      console.error('Error generating preview:', error);
+    } catch {
       alert('Error generating preview. Please check if the backend server is running.');
     } finally {
       setIsProcessing(false);
@@ -191,43 +136,57 @@ const MailMerge: React.FC = () => {
       alert('Please select a template and upload contacts');
       return;
     }
-
     setIsProcessing(true);
-    
     try {
       const response = await fetch(`${API_BASE_URL}/send-emails`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Important: Include session cookies
-        body: JSON.stringify({
-          template_id: selectedTemplate.id,
-          contacts: contacts
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ template_id: selectedTemplate.id, contacts }),
       });
-
       if (response.ok) {
-        await response.json(); // Consume response without assigning to unused variable
         alert(`Successfully processed ${contacts.length} emails!`);
         navigate('/dashboard');
       } else {
         const error = await response.json();
-        
-        // Handle specific credential errors with better user guidance
         if (error.action === 'reauth_required' || error.action === 'sign_in_required') {
-          const message = `Authentication Error: ${error.error}\n\n${error.details || ''}\n\nPlease sign out and sign in again to refresh your Gmail access.`;
-          alert(message);
-          
-          // Provide guidance for re-authentication
-          console.log('Credential issue detected. User should sign out and sign in again.');
+          alert(`Authentication Error: ${error.error}\n\n${error.details || ''}\n\nPlease sign out and sign in again.`);
         } else {
           alert(`Error sending emails: ${error.error}`);
         }
       }
-    } catch (error) {
-      console.error('Error sending emails:', error);
+    } catch {
       alert('Error sending emails. Please check if the backend server is running.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleScheduleSend = async () => {
+    if (!selectedTemplate || contacts.length === 0) { alert('Please select a template and upload contacts'); return; }
+    if (!scheduledAt) { alert('Please select a scheduled send time'); return; }
+    setIsProcessing(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/send-emails`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          template_id: selectedTemplate.id,
+          contacts,
+          scheduled_at: new Date(scheduledAt).toISOString(),
+          campaign_name: campaignName || `Campaign - ${new Date(scheduledAt).toLocaleString()}`,
+        }),
+      });
+      if (response.ok) {
+        alert(`Campaign scheduled for ${new Date(scheduledAt).toLocaleString()}!`);
+        navigate('/dashboard');
+      } else {
+        const error = await response.json();
+        alert(`Error scheduling: ${error.error}`);
+      }
+    } catch {
+      alert('Error scheduling send. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -244,360 +203,328 @@ const MailMerge: React.FC = () => {
     window.URL.revokeObjectURL(url);
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <h1 className="text-3xl font-bold text-gray-900">InMailer</h1>
-          </div>
-          
+  const Step = ({ n, label }: { n: string; label: string }) => (
+    <div className="flex items-center gap-2 mb-4">
+      <div className="w-6 h-6 rounded-full bg-teal-400/15 border border-teal-300/25 flex items-center justify-center flex-shrink-0">
+        <span className="text-xs font-bold text-teal-300">{n}</span>
+      </div>
+      <span className="text-sm font-semibold text-zinc-200">{label}</span>
+    </div>
+  );
 
+  return (
+    <AppShell>
+      <div className="app-container">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="page-title">Mail Merge</h1>
+          <p className="page-description">Upload contacts, select a template, and send personalized campaigns</p>
         </div>
 
-
-
-
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Left Column - Upload & Template Selection */}
-          <div className="space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left column */}
+          <div className="space-y-5">
             {/* CSV Upload */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">1. Upload Contacts</h2>
-              
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
-                <input
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  id="csv-upload"
-                />
-                <label htmlFor="csv-upload" className="cursor-pointer">
-                  <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-2">
-                    <span className="font-medium text-blue-600">Click to upload</span> or drag and drop
-                  </p>
-                  <p className="text-sm text-gray-500">CSV files only</p>
-                </label>
-              </div>
+            <div className="card p-6">
+              <Step n="1" label="Upload contacts" />
 
-              {selectedFile && (
-                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <p className="text-green-800 text-sm">
-                    ✓ {selectedFile.name} uploaded successfully
-                  </p>
-                  <p className="text-green-700 text-xs mt-1">
-                    {contacts.length} contacts found
-                  </p>
+              {!selectedFile ? (
+                <div className="upload-zone">
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="csv-upload"
+                  />
+                  <label htmlFor="csv-upload" className="cursor-pointer flex flex-col items-center">
+                    <div className="w-10 h-10 rounded-xl bg-white/[0.055] border border-white/10 flex items-center justify-center mb-3">
+                      <Upload className="w-5 h-5 text-zinc-500" />
+                    </div>
+                    <p className="text-sm text-zinc-400 mb-1">
+                      <span className="text-teal-300 font-medium">Click to upload</span> or drag and drop
+                    </p>
+                    <p className="text-xs text-zinc-600">CSV files only</p>
+                  </label>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-zinc-200 truncate">{selectedFile.name}</p>
+                    <p className="text-xs text-zinc-500">{contacts.length} contacts found</p>
+                  </div>
+                  <button
+                    onClick={() => { setSelectedFile(null); setContacts([]); setPreviewData([]); }}
+                    className="p-1.5 rounded text-zinc-600 hover:text-red-400 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               )}
 
               <button
                 onClick={downloadSampleCSV}
-                className="mt-4 text-sm text-blue-600 hover:text-blue-800 flex items-center gap-2"
+                className="mt-3 flex items-center gap-1.5 text-xs text-zinc-600 hover:text-teal-300 transition-colors"
               >
-                <Download className="w-4 h-4" />
+                <Download className="w-3.5 h-3.5" />
                 Download sample CSV format
               </button>
             </div>
 
-                         {/* Template Selection */}
-             <div className="bg-white rounded-xl shadow-sm p-6">
-               <div className="flex items-center justify-between mb-4">
-                 <h2 className="text-xl font-semibold text-gray-900">2. Select Template</h2>
-                 <button
-                   onClick={() => navigate('/templates')}
-                   className="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
-                 >
-                   + New Template
-                 </button>
-               </div>
-               
-               {isLoadingTemplates ? (
-                 <div className="text-center py-8">
-                   <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                   <p className="text-gray-500">Loading templates...</p>
-                 </div>
-               ) : templates.length === 0 ? (
-                 <div className="text-center py-8 text-gray-500">
-                   <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                   <p>No templates available</p>
-                   <p className="text-sm mt-2">Create a template first to get started</p>
-                   <button
-                     onClick={() => navigate('/templates')}
-                     className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                   >
-                     Create Template
-                   </button>
-                 </div>
-               ) : (
-                 <div className="max-h-64 overflow-y-auto space-y-3 pr-2">
-                   {templates.map((template) => (
-                     <div
-                       key={template.id}
-                       className={`p-4 border rounded-lg transition-colors ${
-                         selectedTemplate?.id === template.id
-                           ? 'border-blue-500 bg-blue-50'
-                           : 'border-gray-200 hover:border-gray-300'
-                       }`}
-                     >
-                       <div className="flex items-center justify-between">
-                         <div 
-                           className="flex-1 cursor-pointer"
-                           onClick={() => handleTemplateSelect(template)}
-                         >
-                           <h3 className="font-medium text-gray-900">{template.name}</h3>
-                           <p className="text-sm text-gray-600 mt-1">{template.subject}</p>
-                           <p className="text-xs text-gray-500 mt-1">
-                             Variables: {template.variables.join(', ')}
-                           </p>
-                           {template.attachment_name && (
-                             <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                               📎 {template.attachment_name}
-                             </p>
-                           )}
-                         </div>
-                         <div className="flex items-center gap-2">
-                           <FileText className="w-5 h-5 text-gray-400" />
-                           <button
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               editTemplate(template);
-                             }}
-                             onMouseDown={(e) => e.stopPropagation()}
-                             className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
-                             title="Edit template"
-                           >
-                             <Edit3 className="w-4 h-4" />
-                           </button>
-                           <button
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               deleteTemplate(template.id, template.name);
-                             }}
-                             onMouseDown={(e) => e.stopPropagation()}
-                             className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
-                             title="Delete template"
-                           >
-                             <Trash2 className="w-4 h-4" />
-                           </button>
-                         </div>
-                       </div>
-                     </div>
-                   ))}
-                 </div>
-               )}
-             </div>
+            {/* Template Selection */}
+            <div className="card p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-teal-400/15 border border-teal-300/25 flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs font-bold text-teal-300">2</span>
+                  </div>
+                  <span className="text-sm font-semibold text-zinc-200">Select template</span>
+                </div>
+                <button
+                  onClick={() => navigate('/templates/new')}
+                  className="btn-secondary text-xs px-2.5 py-1.5"
+                >
+                  + New
+                </button>
+              </div>
 
-            {/* Action Buttons */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">3. Preview & Send</h2>
-              
+              {isLoadingTemplates ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="spinner" />
+                </div>
+              ) : templates.length === 0 ? (
+                <div className="empty-state py-8">
+                  <div className="empty-state-icon">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <p className="empty-state-title text-sm">No templates</p>
+                  <p className="empty-state-description text-xs mb-4">Create a template first</p>
+                  <button
+                    onClick={() => navigate('/templates/new')}
+                    className="btn-primary text-xs px-3 py-2"
+                  >
+                    Create template
+                  </button>
+                </div>
+              ) : (
+                <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                  {templates.map((template) => (
+                    <div
+                      key={template.id}
+                      className={`p-3.5 rounded-lg border cursor-pointer transition-all duration-150 ${
+                        selectedTemplate?.id === template.id
+                          ? 'border-teal-300/40 bg-teal-400/[0.08]'
+                          : 'border-white/[0.08] hover:border-white/15'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0" onClick={() => setSelectedTemplate(template)}>
+                          <p className="text-sm font-medium text-zinc-200 truncate">{template.name}</p>
+                          <p className="text-xs text-zinc-500 truncate mt-0.5">{template.subject}</p>
+                          {template.attachment_name && (
+                            <p className="text-xs text-emerald-500 mt-0.5">Attachment: {template.attachment_name}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 ml-2">
+                          {selectedTemplate?.id === template.id && (
+                            <div className="w-4 h-4 rounded-full bg-teal-400/20 border border-teal-300/40 flex items-center justify-center">
+                              <div className="w-1.5 h-1.5 rounded-full bg-teal-300" />
+                            </div>
+                          )}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); navigate(`/templates/${template.id}/edit`); }}
+                            className="p-1 rounded text-zinc-600 hover:text-teal-300 hover:bg-teal-400/5 transition-colors"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); deleteTemplate(template.id, template.name); }}
+                            className="p-1 rounded text-zinc-600 hover:text-red-400 hover:bg-red-500/5 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="card p-6">
+              <Step n="3" label="Preview & send" />
+
               <div className="space-y-3">
                 <button
                   onClick={generatePreview}
                   disabled={!selectedTemplate || contacts.length === 0 || isProcessing}
-                  className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                  className="btn-secondary w-full"
                 >
-                  <Eye className="w-5 h-5" />
-                  Generate Preview
+                  <Eye className="w-4 h-4" />
+                  Generate preview
                 </button>
 
-                <button
-                  onClick={handleSendEmails}
-                  disabled={!selectedTemplate || contacts.length === 0 || isProcessing}
-                  className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-                >
-                  {isProcessing ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-5 h-5" />
-                      Send {contacts.length} Emails
-                    </>
+                {!isScheduled && (
+                  <button
+                    onClick={handleSendEmails}
+                    disabled={!selectedTemplate || contacts.length === 0 || isProcessing}
+                    className="btn-success w-full"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <div className="spinner w-4 h-4" style={{ width: 16, height: 16, borderWidth: 2, borderTopColor: 'white' }} />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        Send {contacts.length > 0 ? contacts.length : ''} emails
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {/* Schedule toggle */}
+                <div className="rounded-lg border border-white/[0.08] p-4">
+                  <button
+                    onClick={() => setIsScheduled(v => !v)}
+                    className="flex items-center justify-between w-full mb-0"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Calendar className="w-4 h-4 text-zinc-500" />
+                      <span className="text-sm font-medium text-zinc-300">Schedule for later</span>
+                    </div>
+                    <div className={`w-9 h-5 rounded-full border transition-colors duration-200 flex items-center px-0.5 ${isScheduled ? 'bg-teal-500 border-teal-400' : 'bg-white/[0.055] border-white/10'}`}>
+                      <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200 ${isScheduled ? 'translate-x-4' : 'translate-x-0'}`} />
+                    </div>
+                  </button>
+
+                  {isScheduled && (
+                    <div className="mt-4 space-y-3">
+                      <div>
+                        <label className="form-label text-xs">Campaign name (optional)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Q2 Outreach"
+                          value={campaignName}
+                          onChange={e => setCampaignName(e.target.value)}
+                          className="input"
+                        />
+                      </div>
+                      <div>
+                        <label className="form-label text-xs">Send at</label>
+                        <input
+                          type="datetime-local"
+                          value={scheduledAt}
+                          min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+                          onChange={e => setScheduledAt(e.target.value)}
+                          className="input"
+                        />
+                      </div>
+                      <button
+                        onClick={handleScheduleSend}
+                        disabled={!selectedTemplate || contacts.length === 0 || !scheduledAt || isProcessing}
+                        className="btn-primary w-full"
+                      >
+                        {isProcessing ? (
+                          <><div className="spinner w-4 h-4" style={{ width: 16, height: 16, borderWidth: 2 }} /> Scheduling...</>
+                        ) : (
+                          <><Calendar className="w-4 h-4" /> Schedule {contacts.length > 0 ? contacts.length : ''} emails</>
+                        )}
+                      </button>
+                    </div>
                   )}
-                </button>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Right Column - Preview */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">Preview</h2>
+          {/* Right column - Preview */}
+          <div className="card p-6 flex flex-col">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-sm font-semibold text-zinc-200">Preview</h2>
               {previewData.length > 0 && (
-                <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                  {previewData.length} of {contacts.length} contacts
-                </span>
+                <span className="badge-zinc">{previewData.length} of {contacts.length}</span>
               )}
             </div>
-            
-            {/* Preview Summary */}
+
             {previewData.length > 0 && selectedTemplate && (
-              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-medium text-blue-900">Template: {selectedTemplate.name}</h3>
-                    <p className="text-sm text-blue-700 mt-1">
-                      Showing preview for first {previewData.length} contacts
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-blue-600 font-medium">
-                      {contacts.length} total contacts
-                    </p>
-                    <p className="text-xs text-blue-500">
-                      Variables will be replaced with actual data
-                    </p>
-                  </div>
-                </div>
+              <div className="mb-4 p-3 rounded-lg bg-teal-400/5 border border-teal-300/20">
+                <p className="text-xs font-medium text-teal-300">{selectedTemplate.name}</p>
+                <p className="text-xs text-zinc-600 mt-0.5">Showing preview for first {previewData.length} contacts</p>
               </div>
             )}
-            
+
             {previewData.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
-                <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                <p>Upload a CSV file and select a template to see preview</p>
+              <div className="flex-1 flex flex-col items-center justify-center text-center py-16">
+                <div className="w-10 h-10 rounded-xl bg-white/[0.055] border border-white/10 flex items-center justify-center mb-3">
+                  <Eye className="w-5 h-5 text-zinc-600" />
+                </div>
+                <p className="text-sm text-zinc-500">Upload a CSV and select a template, then generate a preview</p>
               </div>
             ) : (
-              <div className="h-[600px] overflow-y-auto space-y-4 pr-2">
+              <div className="flex-1 overflow-y-auto space-y-3 pr-1">
                 {previewData.map((result, index) => {
-                  // Enhanced contact name extraction - handle various CSV column name formats
-                  const contactName = result.contact_summary?.name || 
-                    result.contact?.First_Name || 
-                    result.contact?.first_name || 
-                    result.contact?.Name || 
-                    result.contact?.name ||
-                    result.contact?.['First Name'] ||
-                    result.contact?.['first name'] ||
-                    result.contact?.['First_Name'] ||
-                    result.contact?.['firstName'] ||
-                    result.contact?.['FirstName'] ||
-                    'Unknown';
-                  
-                  const contactEmail = result.contact_summary?.email || 
-                    result.contact?.Email || 
-                    result.contact?.email || 
-                    result.contact?.['Email Address'] ||
-                    result.contact?.['email address'] ||
-                    result.contact?.['EmailAddress'] ||
-                    'No email';
-                  
-                  const contactCompany = result.contact_summary?.company || 
-                    result.contact?.Company || 
-                    result.contact?.company || 
-                    result.contact?.['Company Name'] ||
-                    result.contact?.['company name'] ||
-                    result.contact?.['CompanyName'] ||
-                    result.contact?.['Organization'] ||
-                    result.contact?.['organization'] ||
-                    'No company';
-                  
+                  const contactName = result.contact_summary?.name || result.contact?.First_Name || result.contact?.first_name || result.contact?.Name || result.contact?.name || 'Unknown';
+                  const contactEmail = result.contact_summary?.email || result.contact?.Email || result.contact?.email || 'No email';
+                  const contactCompany = result.contact_summary?.company || result.contact?.Company || result.contact?.company || '';
                   const subject = result.subject || 'No subject';
                   const contentPreview = result.content_preview || result.content?.substring(0, 150) + '...' || 'No content';
-                  
+
                   return (
-                    <div key={index} className="border border-gray-200 rounded-lg p-4">
-                      {/* Contact Header */}
-                      <div className="flex items-center justify-between mb-3">
+                    <div key={index} className="rounded-lg border border-white/[0.08] p-4 hover:border-white/15 transition-colors">
+                      {/* Contact header */}
+                      <div className="flex items-start justify-between mb-3">
                         <div>
-                          <h4 className="font-medium text-gray-900">
-                            {contactName}
-                          </h4>
-                          <p className="text-xs text-gray-500">
-                            {contactEmail}
-                          </p>
-                          {contactCompany !== 'No company' && (
-                            <p className="text-xs text-blue-600">
-                              {contactCompany}
-                            </p>
+                          <p className="text-sm font-medium text-zinc-200">{contactName}</p>
+                          <p className="text-xs text-zinc-500 mt-0.5">{contactEmail}</p>
+                          {contactCompany && (
+                            <p className="text-xs text-teal-300 mt-0.5">{contactCompany}</p>
                           )}
                         </div>
-                        <span className={`text-xs px-2 py-1 rounded-full ${
-                          result.status === 'preview' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
-                        }`}>
+                        <span className={`badge text-xs ${result.status === 'preview' ? 'badge-indigo' : 'badge-zinc'}`}>
                           {result.status}
                         </span>
                       </div>
-                      
-                      {/* Subject Line */}
-                      <div className="mb-3 p-3 bg-gray-50 rounded-lg">
-                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Subject:</p>
-                        <p className="text-sm font-medium text-gray-900">{subject}</p>
+
+                      {/* Subject */}
+                      <div className="mb-2.5 px-3 py-2 rounded-md bg-black/20 border border-white/[0.08]">
+                        <p className="text-xs text-zinc-600 mb-0.5 uppercase tracking-wide">Subject</p>
+                        <p className="text-xs font-medium text-zinc-300">{subject}</p>
                       </div>
-                      
-                      {/* Email Content Preview */}
-                      <div className="mb-3 p-3 bg-gray-50 rounded-lg">
-                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Content Preview:</p>
-                        <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
-                          {contentPreview}
-                        </p>
+
+                      {/* Preview */}
+                      <div className="px-3 py-2 rounded-md bg-black/20 border border-white/[0.08]">
+                        <p className="text-xs text-zinc-600 mb-1 uppercase tracking-wide">Preview</p>
+                        <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-line">{contentPreview}</p>
                       </div>
-                      
-                      {/* Attachment */}
+
                       {selectedTemplate?.attachment_name && (
-                        <div className="mt-3 pt-3 border-t border-gray-100">
-                          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Attachment:</p>
-                          <p className="text-sm text-green-600 flex items-center gap-1">
-                            📎 {selectedTemplate.attachment_name}
-                          </p>
+                        <div className="mt-2.5 flex items-center gap-1.5 text-xs text-emerald-500">
+                          <span>Attachment:</span> {selectedTemplate.attachment_name}
                         </div>
                       )}
                     </div>
                   );
                 })}
-                
-                {previewData.length > 5 && (
-                  <div className="text-center py-4 border-t border-gray-100">
-                    <p className="text-sm text-gray-500">
-                      Scroll to see all {previewData.length} previews
-                    </p>
-                  </div>
-                )}
-                
+
                 {contacts.length > previewData.length && (
-                  <p className="text-center text-sm text-gray-500 py-2">
-                    ... and {contacts.length - previewData.length} more contacts
-                  </p>
+                  <div className="flex items-center gap-2 py-3 text-xs text-zinc-600">
+                    <ChevronRight className="w-3.5 h-3.5" />
+                    and {contacts.length - previewData.length} more contacts
+                  </div>
                 )}
               </div>
             )}
           </div>
-                 </div>
-       </div>
-       
-       {/* Footer */}
-       <footer className="mt-16 border-t border-gray-200 bg-white">
-         <div className="max-w-6xl mx-auto px-4 py-6">
-           <div className="text-center text-gray-600">
-             <p className="text-sm">
-               © 2024 Made by{' '}
-               <a 
-                 href="https://www.linkedin.com/in/parva3105" 
-                 target="_blank" 
-                 rel="noopener noreferrer"
-                 className="text-blue-600 hover:text-blue-800 font-medium transition-colors underline decoration-blue-300 hover:decoration-blue-600"
-               >
-                 Parva Shah
-               </a>
-             </p>
-           </div>
-         </div>
-       </footer>
-     </div>
-   );
- };
- 
- export default MailMerge;
+        </div>
+      </div>
+    </AppShell>
+  );
+};
+
+export default MailMerge;
