@@ -5,11 +5,18 @@ name: Keep-Alive Heartbeat
 # outside Render: Render decides whether to spin a free service down based on
 # inbound external HTTP traffic, and a self-ping from inside the app cannot
 # wake it once the service has already gone to sleep.
+#
+# NOTE: The primary keep-alive is an external UptimeRobot monitor (5-minute
+# interval) hitting the same /api/health URL. This workflow is a secondary
+# backup. GitHub's scheduled runs are best-effort and can be delayed or
+# skipped under load, so it must not be relied on as the only pinger.
 
 on:
   schedule:
-    # Every 10 minutes — comfortably under Render's ~15 minute idle window.
-    - cron: '*/10 * * * *'
+    # Every 5 minutes, offset off the top of the hour (:02, :07, :12, ...).
+    # Five-minute spacing gives ~3 attempts inside Render's ~15 minute idle
+    # window, and the offset avoids GitHub's busiest, most-throttled slots.
+    - cron: '2-59/5 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -19,5 +26,7 @@ jobs:
     steps:
       - name: Ping /api/health
         run: |
-          curl --fail --silent --show-error --max-time 20 \
+          # 60s timeout so a single cold-start wake-up (which can take ~30-60s
+          # on Render's free tier) does not flag the run as failed.
+          curl --fail --silent --show-error --max-time 60 \
             https://inmailer.onrender.com/api/health
