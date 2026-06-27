@@ -1,0 +1,23 @@
+name: Keep-Alive Heartbeat
+
+# Pings the Render backend health endpoint on a schedule so the free-tier
+# service does not spin down after inactivity. The ping must originate from
+# outside Render: Render decides whether to spin a free service down based on
+# inbound external HTTP traffic, and a self-ping from inside the app cannot
+# wake it once the service has already gone to sleep.
+
+on:
+  schedule:
+    # Every 10 minutes — comfortably under Render's ~15 minute idle window.
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping backend health endpoint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /api/health
+        run: |
+          curl --fail --silent --show-error --max-time 20 \
+            https://inmailer.onrender.com/api/health
